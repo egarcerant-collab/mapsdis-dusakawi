@@ -6,39 +6,41 @@
 <title>Dusakawi EPSI — Registro de Discapacidad</title>
 <style>
 :root{
-  --red:#C0392B;--red-dark:#922B21;--green:#27AE60;--green-dark:#1E8449;
-  --yellow:#E67E22;--blue:#2980B9;--dark:#2C3E50;--border:#DEE2E6;--white:#fff;
+  /* COLORES INSTITUCIONALES DUSAKAWI EPSI */
+  --pri:#1B6B2A;--pri-dark:#13491D;--pri-light:#27AE60;
+  --red:#C0392B;--red-dark:#922B21;
+  --yellow:#E8A000;--blue:#1565C0;
+  --dark:#1A3A1A;--border:#DEE2E6;--white:#fff;
+  --bg:#F0F4F0;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Tahoma,sans-serif;background:#eef0f3;color:var(--dark)}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--dark)}
 
 /* AUTH */
 .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#1A252F 0%,#C0392B 65%,#E67E22 100%)}
-.auth-box{background:#fff;border-radius:14px;padding:38px 34px;width:420px;
-  box-shadow:0 24px 64px rgba(0,0,0,0.32)}
-.auth-logo{text-align:center;margin-bottom:26px}
-.auth-logo .icon{font-size:3rem;display:block;margin-bottom:6px}
-.auth-logo .brand{font-size:1.55rem;font-weight:800;color:var(--red);letter-spacing:1px}
-.auth-logo .sub{font-size:0.74rem;color:#777;margin-top:3px;line-height:1.4}
+  background:linear-gradient(150deg,#0D3B16 0%,#1B6B2A 50%,#27AE60 100%)}
+.auth-box{background:#fff;border-radius:16px;padding:36px 32px;width:430px;
+  box-shadow:0 24px 64px rgba(0,0,0,0.35)}
+.auth-logo{text-align:center;margin-bottom:24px}
+.auth-logo img{height:90px;object-fit:contain}
+.auth-logo .sub{font-size:0.75rem;color:#666;margin-top:8px;line-height:1.5;font-weight:600}
 
 /* HEADER */
-.hdr{background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;
-  padding:13px 26px;display:flex;align-items:center;gap:16px;
-  box-shadow:0 3px 10px rgba(0,0,0,0.22)}
-.hdr .circle{background:#fff;border-radius:50%;width:50px;height:50px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;font-size:1.5rem}
-.hdr h1{font-size:1.25rem;font-weight:800}
-.hdr p{font-size:0.73rem;opacity:.9;margin-top:2px}
+.hdr{background:linear-gradient(135deg,var(--pri),var(--pri-dark));color:#fff;
+  padding:10px 24px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 3px 12px rgba(0,0,0,0.25)}
+.hdr img.logo{height:52px;object-fit:contain;filter:brightness(0) invert(1)}
+.hdr-txt h1{font-size:1.2rem;font-weight:800;letter-spacing:.5px}
+.hdr-txt p{font-size:0.71rem;opacity:.88;margin-top:2px}
 .hdr-r{margin-left:auto;display:flex;align-items:center;gap:10px}
 .hdr-user{font-size:0.78rem;background:rgba(255,255,255,.15);padding:4px 12px;border-radius:20px}
 .sync-badge{font-size:0.74rem;background:rgba(0,0,0,.25);padding:3px 10px;border-radius:12px;color:#fff}
 
 /* NAV */
-.nav{background:var(--dark);padding:7px 20px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
-.nb{background:transparent;color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.22);
+.nav{background:var(--pri-dark);padding:7px 20px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.nb{background:transparent;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.25);
   border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem;transition:all .2s;font-family:inherit}
-.nb:hover,.nb.on{background:var(--red);color:#fff;border-color:var(--red)}
+.nb:hover,.nb.on{background:var(--pri-light);color:#fff;border-color:var(--pri-light)}
 .nb-r{margin-left:auto}
 
 /* BANNER DRIVE */
@@ -53,11 +55,11 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#eef0f3;color:var(--dar
 .card{background:#fff;border-radius:10px;margin-bottom:16px;
   box-shadow:0 2px 9px rgba(0,0,0,.07);overflow:hidden}
 .sh{color:#fff;padding:11px 17px;font-weight:700;font-size:0.87rem;display:flex;align-items:center;gap:7px}
-.sh-red{background:linear-gradient(135deg,var(--red),var(--red-dark))}
-.sh-green{background:linear-gradient(135deg,var(--green),var(--green-dark))}
-.sh-blue{background:linear-gradient(135deg,var(--blue),#1A5276)}
-.sh-yellow{background:linear-gradient(135deg,var(--yellow),#CA6F1E)}
-.sh-dark{background:linear-gradient(135deg,var(--dark),#1A252F)}
+.sh-red{background:linear-gradient(135deg,var(--pri),var(--pri-dark))}
+.sh-green{background:linear-gradient(135deg,var(--pri-light),var(--pri))}
+.sh-blue{background:linear-gradient(135deg,var(--blue),#0D47A1)}
+.sh-yellow{background:linear-gradient(135deg,var(--yellow),#B07800)}
+.sh-dark{background:linear-gradient(135deg,var(--dark),#0D1F0D)}
 .sb{padding:17px 19px}
 
 /* FORM */
@@ -66,8 +68,8 @@ label{display:block;font-weight:600;font-size:0.8rem;margin-bottom:4px;color:#44
 .req{color:var(--red)}
 input,select,textarea{width:100%;padding:8px 10px;border:1.5px solid var(--border);
   border-radius:6px;font-size:0.86rem;font-family:inherit;transition:border-color .2s}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--red);
-  box-shadow:0 0 0 3px rgba(192,57,43,.1)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);
+  box-shadow:0 0 0 3px rgba(27,107,42,.12)}
 input[readonly]{background:#f5f5f5;cursor:default}
 textarea{resize:vertical;min-height:68px}
 
@@ -80,15 +82,15 @@ textarea{resize:vertical;min-height:68px}
 /* BUTTONS */
 .btn{padding:8px 17px;border:none;border-radius:7px;cursor:pointer;
   font-size:0.86rem;font-weight:700;transition:all .2s;font-family:inherit}
-.btn-r{background:var(--red);color:#fff}    .btn-r:hover{background:var(--red-dark)}
-.btn-g{background:var(--green);color:#fff}  .btn-g:hover{background:var(--green-dark)}
-.btn-b{background:var(--blue);color:#fff}   .btn-b:hover{background:#1A5276}
-.btn-y{background:var(--yellow);color:#fff} .btn-y:hover{background:#CA6F1E}
-.btn-d{background:var(--dark);color:#fff}   .btn-d:hover{background:#1A252F}
+.btn-r{background:var(--pri);color:#fff}      .btn-r:hover{background:var(--pri-dark)}
+.btn-g{background:var(--pri-light);color:#fff} .btn-g:hover{background:var(--pri)}
+.btn-b{background:var(--blue);color:#fff}      .btn-b:hover{background:#0D47A1}
+.btn-y{background:var(--yellow);color:#fff}    .btn-y:hover{background:#B07800}
+.btn-d{background:var(--dark);color:#fff}      .btn-d:hover{background:#0D1F0D}
 .btn-full{width:100%;padding:12px}
 .btn-sm{padding:5px 10px;font-size:0.77rem}
-.btn-ol{background:transparent;border:2px solid var(--red);color:var(--red)}
-.btn-ol:hover{background:var(--red);color:#fff}
+.btn-ol{background:transparent;border:2px solid var(--pri);color:var(--pri)}
+.btn-ol:hover{background:var(--pri);color:#fff}
 
 /* ALERTS */
 .alert{padding:10px 14px;border-radius:7px;margin-bottom:13px;font-size:0.86rem}
@@ -106,16 +108,16 @@ tr:hover td{background:#fafafa}
 /* STATS */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:20px}
 .stat{background:#fff;border-radius:10px;padding:17px;
-  box-shadow:0 2px 9px rgba(0,0,0,.07);border-left:4px solid var(--red)}
-.stat.g{border-left-color:var(--green)}.stat.b{border-left-color:var(--blue)}
+  box-shadow:0 2px 9px rgba(0,0,0,.07);border-left:4px solid var(--pri)}
+.stat.g{border-left-color:var(--pri-light)}.stat.b{border-left-color:var(--blue)}
 .stat.y{border-left-color:var(--yellow)}
 .stat-n{font-size:2.1rem;font-weight:800;color:var(--dark)}
 .stat-l{font-size:0.75rem;color:#777;margin-top:3px}
 
 /* BADGES */
 .bdg{display:inline-block;padding:2px 7px;border-radius:11px;font-size:0.71rem;font-weight:700}
-.bdg-r{background:#FADBD8;color:var(--red)}.bdg-g{background:#D5F5E3;color:var(--green-dark)}
-.bdg-b{background:#D6EAF8;color:var(--blue)}.bdg-y{background:#FEF9E7;color:#CA6F1E}
+.bdg-r{background:#D5F5E3;color:var(--pri-dark)}.bdg-g{background:#D5F5E3;color:var(--pri)}
+.bdg-b{background:#D6EAF8;color:var(--blue)}.bdg-y{background:#FEF9E7;color:#B07800}
 
 /* FORM ACTIONS */
 .fac{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;
@@ -126,12 +128,12 @@ tr:hover td{background:#fafafa}
   display:flex;align-items:flex-start;justify-content:center;
   padding:26px 14px;overflow-y:auto}
 .modal-box{background:#fff;border-radius:12px;width:100%;max-width:800px}
-.modal-head{background:var(--red);color:#fff;padding:13px 19px;
+.modal-head{background:var(--pri);color:#fff;padding:13px 19px;
   border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center}
 .modal-head button{background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer}
 .modal-body{padding:19px;max-height:75vh;overflow-y:auto}
 .det-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.det-item{background:#f8f9fa;padding:8px 12px;border-radius:7px;border-left:3px solid var(--red)}
+.det-item{background:#f8f9fa;padding:8px 12px;border-radius:7px;border-left:3px solid var(--pri)}
 .det-label{font-size:0.7rem;color:#777;margin-bottom:2px}
 .det-val{font-weight:600;font-size:0.86rem}
 
@@ -162,8 +164,8 @@ tr:hover td{background:#fafafa}
 <div id="scrLogin" class="auth-wrap">
   <div class="auth-box">
     <div class="auth-logo">
-      <span class="icon">🏥</span>
-      <div class="brand">DUSAKAWI EPSI</div>
+      <img src="https://dusakawiepsi.com/wp-content/uploads/2023/11/logo-footer.png"
+           alt="Dusakawi EPSI" onerror="this.style.display='none'">
       <div class="sub">Asociación de Cabildos Indígenas del Cesar y La Guajira<br>Sistema de Registro de Discapacidad</div>
     </div>
     <div id="alLogin"></div>
@@ -193,8 +195,9 @@ tr:hover td{background:#fafafa}
 <div id="scrReg" class="auth-wrap hidden">
   <div class="auth-box">
     <div class="auth-logo">
-      <div class="brand" style="font-size:1.3rem">Crear Cuenta</div>
-      <div class="sub">DUSAKAWI EPSI — Sistema de Registro</div>
+      <img src="https://dusakawiepsi.com/wp-content/uploads/2023/11/logo-footer.png"
+           alt="Dusakawi EPSI" style="height:70px" onerror="this.style.display='none'">
+      <div class="sub">Crear Cuenta — Sistema de Registro</div>
     </div>
     <div id="alReg"></div>
     <div class="fg">
@@ -230,8 +233,9 @@ tr:hover td{background:#fafafa}
 <div id="scrApp" class="hidden">
 
   <div class="hdr">
-    <div class="circle">🏥</div>
-    <div>
+    <img class="logo" src="https://dusakawiepsi.com/wp-content/uploads/2023/11/logo-footer.png"
+         alt="Dusakawi EPSI" onerror="this.style.display='none'">
+    <div class="hdr-txt">
       <h1>DUSAKAWI EPSI</h1>
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
