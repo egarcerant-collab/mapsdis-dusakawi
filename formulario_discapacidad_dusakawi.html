@@ -837,30 +837,16 @@ const getSess  = ()  => JSON.parse(localStorage.getItem(K.sess)  || 'null');
 const setSess  = s   => localStorage.setItem(K.sess,  JSON.stringify(s));
 
 // ================================================================
-//  GOOGLE DRIVE — JSONP (funciona desde archivos locales file://)
+//  GOOGLE DRIVE — fetch (funciona desde GitHub Pages HTTPS)
 // ================================================================
 function driveCall(params, cb) {
   if (!SCRIPT_URL) return cb(new Error('no-url'), null);
-  const fn = '__gcb_' + Date.now();
-  let timer;
-  window[fn] = function(data) {
-    clearTimeout(timer);
-    delete window[fn];
-    if (sc.parentNode) sc.parentNode.removeChild(sc);
-    cb(null, data);
-  };
-  const sc = document.createElement('script');
-  sc.onerror = () => { clearTimeout(timer); delete window[fn]; cb(new Error('net'), null); };
-  timer = setTimeout(() => {
-    delete window[fn];
-    if (sc.parentNode) sc.parentNode.removeChild(sc);
-    cb(new Error('timeout'), null);
-  }, 20000);
-  const qs = Object.entries({ ...params, callback: fn })
-    .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
-    .join('&');
-  sc.src = SCRIPT_URL + '?' + qs;
-  document.head.appendChild(sc);
+  const url = new URL(SCRIPT_URL);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  fetch(url.toString(), { method: 'GET', redirect: 'follow' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => cb(null, data))
+    .catch(err => cb(err, null));
 }
 
 function setSyncStatus(estado, msg) {
