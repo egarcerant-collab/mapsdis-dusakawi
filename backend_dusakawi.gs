@@ -14,12 +14,18 @@
 // ================================================================
 
 const FILE_NAME   = 'dusakawi_registros_discapacidad.json';
-const FOLDER_NAME = 'Dusakawi EPSI - Registros';
+const FOLDER_ID   = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
 
-// ── Obtiene o crea la carpeta de trabajo ───────────────────────
+// ── Obtiene la carpeta de trabajo ──────────────────────────────
 function getFolder() {
-  const iter = DriveApp.getFoldersByName(FOLDER_NAME);
-  return iter.hasNext() ? iter.next() : DriveApp.createFolder(FOLDER_NAME);
+  try {
+    return DriveApp.getFolderById(FOLDER_ID);
+  } catch(e) {
+    // Si no tiene acceso, crea una carpeta propia como respaldo
+    const name = 'Dusakawi EPSI - Registros';
+    const iter = DriveApp.getFoldersByName(name);
+    return iter.hasNext() ? iter.next() : DriveApp.createFolder(name);
+  }
 }
 
 // ── Punto de entrada ───────────────────────────────────────────

@@ -848,13 +848,18 @@ function driveCall(params, cb) {
   const url = new URL(SCRIPT_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
-  fetch(url.toString(), { method: 'GET', redirect: 'follow', signal: ctrl.signal })
+  const timer = setTimeout(() => ctrl.abort(), 25000);
+  fetch(url.toString(), {
+    method: 'GET',
+    redirect: 'follow',
+    credentials: 'omit',   // clave para CORS con Apps Script
+    signal: ctrl.signal
+  })
     .then(r => r.text())
     .then(txt => {
       clearTimeout(timer);
       try { cb(null, JSON.parse(txt)); }
-      catch(e) { cb(new Error('Respuesta inválida del script'), null); }
+      catch(e) { cb(new Error('Respuesta inválida'), null); }
     })
     .catch(err => { clearTimeout(timer); cb(err, null); });
 }
