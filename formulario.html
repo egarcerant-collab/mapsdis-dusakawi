@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dusakawi EPSI — Registro de Discapacidad</title>
+<style>
+:root{
+  --pri:#1B6B2A;--pri-dark:#13491D;--pri-light:#27AE60;
+  --red:#C0392B;--red-dark:#922B21;--yellow:#E8A000;--blue:#1565C0;
+  --dark:#1A3A1A;--border:#DEE2E6;--white:#fff;--bg:#F0F4F0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--dark)}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(150deg,#0D3B16 0%,#1B6B2A 50%,#27AE60 100%)}
+.auth-box{background:#fff;border-radius:16px;padding:36px 32px;width:430px;
+  box-shadow:0 24px 64px rgba(0,0,0,0.35)}
+.auth-logo{text-align:center;margin-bottom:24px}
+.auth-logo img{height:90px;object-fit:contain}
+.auth-logo .sub{font-size:0.75rem;color:#666;margin-top:8px;line-height:1.5;font-weight:600}
+.hdr{background:linear-gradient(135deg,var(--pri),var(--pri-dark));color:#fff;
+  padding:10px 24px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 3px 12px rgba(0,0,0,0.25)}
+.hdr img.logo{height:52px;object-fit:contain;filter:brightness(0) invert(1)}
+.hdr-txt h1{font-size:1.2rem;font-weight:800;letter-spacing:.5px}
+.hdr-txt p{font-size:0.71rem;opacity:.88;margin-top:2px}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.hdr-user{font-size:0.78rem;background:rgba(255,255,255,.15);padding:4px 12px;border-radius:20px}
+.sync-badge{font-size:0.74rem;background:rgba(0,0,0,.25);padding:3px 10px;border-radius:12px;color:#fff}
+.nav{background:var(--pri-dark);padding:7px 20px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.nb{background:transparent;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.25);
+  border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem;transition:all .2s;font-family:inherit}
+.nb:hover,.nb.on{background:var(--pri-light);color:#fff;border-color:var(--pri-light)}
+.nb-r{margin-left:auto}
+.main{padding:20px 24px;max-width:1240px;margin:0 auto}
+.card{background:#fff;border-radius:10px;margin-bottom:16px;
+  box-shadow:0 2px 9px rgba(0,0,0,.07);overflow:hidden}
+.sh{color:#fff;padding:11px 17px;font-weight:700;font-size:0.87rem;display:flex;align-items:center;gap:7px}
+.sh-red{background:linear-gradient(135deg,var(--pri),var(--pri-dark))}
+.sh-green{background:linear-gradient(135deg,var(--pri-light),var(--pri))}
+.sh-blue{background:linear-gradient(135deg,var(--blue),#0D47A1)}
+.sh-yellow{background:linear-gradient(135deg,var(--yellow),#B07800)}
+.sh-dark{background:linear-gradient(135deg,var(--dark),#0D1F0D)}
+.sb{padding:17px 19px}
+.fg{margin-bottom:13px}
+label{display:block;font-weight:600;font-size:0.8rem;margin-bottom:4px;color:#444}
+.req{color:var(--red)}
+input,select,textarea{width:100%;padding:8px 10px;border:1.5px solid var(--border);
+  border-radius:6px;font-size:0.86rem;font-family:inherit;transition:border-color .2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);
+  box-shadow:0 0 0 3px rgba(27,107,42,.12)}
+input[readonly]{background:#f5f5f5;cursor:default}
+textarea{resize:vertical;min-height:68px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:13px}
+.s2{grid-column:span 2}.s3{grid-column:span 3}.s4{grid-column:span 4}
+.btn{padding:8px 17px;border:none;border-radius:7px;cursor:pointer;
+  font-size:0.86rem;font-weight:700;transition:all .2s;font-family:inherit}
+.btn-r{background:var(--pri);color:#fff}    .btn-r:hover{background:var(--pri-dark)}
+.btn-g{background:var(--pri-light);color:#fff} .btn-g:hover{background:var(--pri)}
+.btn-b{background:var(--blue);color:#fff}   .btn-b:hover{background:#0D47A1}
+.btn-y{background:var(--yellow);color:#fff} .btn-y:hover{background:#B07800}
+.btn-d{background:var(--dark);color:#fff}   .btn-d:hover{background:#0D1F0D}
+.btn-full{width:100%;padding:12px}
+.btn-sm{padding:5px 10px;font-size:0.77rem}
+.btn-ol{background:transparent;border:2px solid var(--pri);color:var(--pri)}
+.btn-ol:hover{background:var(--pri);color:#fff}
+.alert{padding:10px 14px;border-radius:7px;margin-bottom:13px;font-size:0.86rem}
+.al-ok{background:#D5F5E3;color:#1E8449;border:1px solid #A9DFBF}
+.al-err{background:#FADBD8;color:#922B21;border:1px solid #F1948A}
+.al-inf{background:#D6EAF8;color:#1A5276;border:1px solid #85C1E9}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.81rem}
+th{background:var(--dark);color:#fff;padding:9px 10px;text-align:left;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:middle}
+tr:hover td{background:#fafafa}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:20px}
+.stat{background:#fff;border-radius:10px;padding:17px;
+  box-shadow:0 2px 9px rgba(0,0,0,.07);border-left:4px solid var(--pri)}
+.stat.g{border-left-color:var(--pri-light)}.stat.b{border-left-color:var(--blue)}
+.stat.y{border-left-color:var(--yellow)}
+.stat-n{font-size:2.1rem;font-weight:800;color:var(--dark)}
+.stat-l{font-size:0.75rem;color:#777;margin-top:3px}
+.bdg{display:inline-block;padding:2px 7px;border-radius:11px;font-size:0.71rem;font-weight:700}
+.bdg-r{background:#D5F5E3;color:var(--pri-dark)}.bdg-g{background:#D5F5E3;color:var(--pri)}
+.bdg-b{background:#D6EAF8;color:var(--blue)}.bdg-y{background:#FEF9E7;color:#B07800}
+.fac{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;
+  padding-top:17px;border-top:2px solid var(--border);flex-wrap:wrap}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:26px 14px;overflow-y:auto}
+.modal-box{background:#fff;border-radius:12px;width:100%;max-width:800px}
+.modal-head{background:var(--pri);color:#fff;padding:13px 19px;
+  border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center}
+.modal-head button{background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer}
+.modal-body{padding:19px;max-height:75vh;overflow-y:auto}
+.det-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.det-item{background:#f8f9fa;padding:8px 12px;border-radius:7px;border-left:3px solid var(--pri)}
+.det-label{font-size:0.7rem;color:#777;margin-bottom:2px}
+.det-val{font-weight:600;font-size:0.86rem}
+.hidden{display:none!important}
+.tc{text-align:center}.mt8{margin-top:8px}
+.link-btn{background:none;border:none;color:var(--blue);cursor:pointer;
+  text-decoration:underline;font-size:0.82rem;padding:0}
+.sep{height:1px;background:var(--border);margin:13px 0}
+.w-auto{width:auto!important}
+.sb-bar{display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap}
+.sb-bar input{flex:1;min-width:200px}
+@media(max-width:768px){
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .s2,.s3,.s4{grid-column:span 1}
+  .stats{grid-template-columns:1fr 1fr}
+  .main{padding:11px}
+  .det-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="scrLogin" class="auth-wrap">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <img src="https://egarcerant-collab.github.io/mapsdis-dusakawi/logo_dusakawi.png"
+           alt="Dusakawi EPSI" onerror="this.style.display='none'">
+      <div class="sub">Asociación de Cabildos Indígenas del Cesar y La Guajira<br>Sistema de Registro de Discapacidad</div>
+    </div>
+    <div id="alLogin"></div>
+    <div class="fg"><label>Usuario</label>
+      <input type="text" id="lUser" placeholder="Nombre de usuario"></div>
+    <div class="fg"><label>Contraseña</label>
+      <input type="password" id="lPass" placeholder="Contraseña"
+             onkeypress="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-r btn-full" onclick="doLogin()">Ingresar al Sistema</button>
+    <div class="tc mt8"><button class="link-btn" onclick="go('scrReg')">Registrar nuevo usuario</button></div>
+    <div class="sep"></div>
+    <p style="font-size:0.73rem;color:#aaa;text-align:center">
+      Cuenta principal: <strong>egarcerant</strong> / <strong>1323456</strong>
+    </p>
+  </div>
+</div>
+
+<!-- REGISTRO USUARIO -->
+<div id="scrReg" class="auth-wrap hidden">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <img src="https://egarcerant-collab.github.io/mapsdis-dusakawi/logo_dusakawi.png"
+           alt="Dusakawi EPSI" style="height:70px" onerror="this.style.display='none'">
+      <div class="sub">Crear Cuenta — Sistema de Registro</div>
+    </div>
+    <div id="alReg"></div>
+    <div class="fg"><label>Nombre Completo <span class="req">*</span></label>
+      <input type="text" id="rName" placeholder="Nombre completo"></div>
+    <div class="fg"><label>Cargo / Rol</label>
+      <input type="text" id="rCargo" placeholder="Cargo o rol"></div>
+    <div class="fg"><label>Usuario <span class="req">*</span></label>
+      <input type="text" id="rUser" placeholder="Nombre de usuario"></div>
+    <div class="fg"><label>Contraseña <span class="req">*</span></label>
+      <input type="password" id="rPass" placeholder="Mínimo 6 caracteres"></div>
+    <div class="fg"><label>Confirmar Contraseña <span class="req">*</span></label>
+      <input type="password" id="rPass2" placeholder="Repita la contraseña"></div>
+    <button class="btn btn-r btn-full" onclick="doRegister()">Crear Cuenta</button>
+    <div class="tc mt8"><button class="link-btn" onclick="go('scrLogin')">← Volver al login</button></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="scrApp" class="hidden">
+  <div class="hdr">
+    <img class="logo" src="https://egarcerant-collab.github.io/mapsdis-dusakawi/logo_dusakawi.png"
+         alt="Dusakawi EPSI" onerror="this.style.display='none'">
+    <div class="hdr-txt">
+      <h1>DUSAKAWI EPSI</h1>
+      <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
+    </div>
+    <div class="hdr-r">
+      <span id="syncBadge" class="sync-badge">⬤ Cargando...</span>
+      <span id="hdrUser" class="hdr-user"></span>
+    </div>
+  </div>
+  <div class="nav">
+    <button class="nb on" id="nDash" onclick="vista('dash')">📊 Dashboard</button>
+    <button class="nb" id="nForm" onclick="vista('form')">➕ Nuevo Registro</button>
+    <button class="nb" id="nRecs" onclick="vista('recs')">📋 Registros</button>
+    <button class="nb" onclick="exportarJSON()">⬇ Exportar JSON</button>
+    <button class="nb" onclick="exportarCSV()">⬇ Exportar CSV</button>
+    <button class="nb" onclick="document.getElementById('fImport').click()">⬆ Importar JSON</button>
+    <input type="file" id="fImport" accept=".json" class="hidden" onchange="importarJSON(event)">
+    <button class="nb nb-r" onclick="sincronizar()">🔄 Sincronizar</button>
+    <button class="nb" onclick="doLogout()">🚪 Salir</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="vDash" class="main">
+    <div class="stats">
+      <div class="stat"><div class="stat-n" id="sTotal">0</div><div class="stat-l">Total Registros</div></div>
+      <div class="stat g"><div class="stat-n" id="sHoy">0</div><div class="stat-l">Registros Hoy</div></div>
+      <div class="stat b"><div class="stat-n" id="sMes">0</div><div class="stat-l">Este Mes</div></div>
+      <div class="stat y"><div class="stat-n" id="sRehab">0</div><div class="stat-l">En Rehabilitación</div></div>
+    </div>
+    <div class="card">
+      <div class="sh sh-red">📋 Últimos 5 Registros</div>
+      <div class="sb"><div class="tw"><table>
+        <thead><tr><th>Tipo/ID</th><th>Nombre</th><th>Municipio</th><th>Discapacidad</th><th>Régimen</th><th>Fecha</th></tr></thead>
+        <tbody id="dtBody"></tbody>
+      </table></div></div>
+    </div>
+  </div>
+
+  <!-- FORMULARIO -->
+  <div id="vForm" class="main hidden">
+    <div id="alForm"></div>
+    <form id="frmReg" onsubmit="guardar(event)">
+
+      <div class="card"><div class="sh sh-red">👤 1. Datos de Identificación</div><div class="sb"><div class="g4">
+        <div class="fg"><label>Tipo Identificación <span class="req">*</span></label>
+          <select name="tipoId" required>
+            <option value="">-- Seleccione --</option>
+            <option value="CC">CC — Cédula de Ciudadanía</option>
+            <option value="SC">SC — Salvo Conducto</option>
+            <option value="PE">PE — Permiso Especial Permanencia</option>
+            <option value="RC">RC — Registro Civil</option>
+            <option value="TI">TI — Tarjeta de Identidad</option>
+            <option value="CN">CN — Certificado Nacido Vivo</option>
+            <option value="UN">UN — Sin Identificación (menor)</option>
+            <option value="AS">AS — Adulto sin identificación</option>
+            <option value="MS">MS — Menor sin identificación</option>
+            <option value="PT">PT — Pasaporte</option>
+          </select></div>
+        <div class="fg"><label>Número de Identificación <span class="req">*</span></label>
+          <input type="text" name="identificacion" required placeholder="Número de documento"></div>
+        <div class="fg"><label>Fecha de Registro</label>
+          <input type="date" name="fechaRegistro" id="fFechaReg"></div>
+        <div class="fg"><label>Registrado por</label>
+          <input type="text" name="registradoPor" id="fRegPor" readonly></div>
+        <div class="fg"><label>Primer Apellido <span class="req">*</span></label>
+          <input type="text" name="primerApellido" required placeholder="Primer apellido"></div>
+        <div class="fg"><label>Segundo Apellido</label>
+          <input type="text" name="segundoApellido" placeholder="Segundo apellido"></div>
+        <div class="fg"><label>Primer Nombre <span class="req">*</span></label>
+          <input type="text" name="primerNombre" required placeholder="Primer nombre"></div>
+        <div class="fg"><label>Segundo Nombre</label>
+          <input type="text" name="segundoNombre" placeholder="Segundo nombre"></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-green">🧬 2. Datos Demográficos</div><div class="sb"><div class="g4">
+        <div class="fg"><label>Fecha de Nacimiento <span class="req">*</span></label>
+          <input type="date" name="fechaNacimiento" required onchange="calcEdad(this)"></div>
+        <div class="fg"><label>Edad (calculada)</label>
+          <input type="number" name="edad" id="fEdad" readonly placeholder="Auto"></div>
+        <div class="fg"><label>Sexo <span class="req">*</span></label>
+          <select name="sexo" required><option value="">-- Seleccione --</option>
+            <option>Masculino</option><option>Femenino</option><option>Intersexual</option></select></div>
+        <div class="fg"><label>Identidad de Género</label>
+          <select name="identidadGenero"><option value="">-- Seleccione --</option>
+            <option>Femenino</option><option>Masculino</option><option>Cisgénero</option>
+            <option>Transgénero</option><option>Otra</option></select></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-blue">🌍 3. Pertenencia Étnica y Grupo Poblacional</div><div class="sb"><div class="g3">
+        <div class="fg"><label>Pertenencia Étnica</label>
+          <select name="perteneniaEtnica"><option value="">-- Seleccione --</option>
+            <option>Afrocolombiano</option><option>Indígena</option><option>Mulato</option>
+            <option>Palanquero (de San Basilio)</option>
+            <option>Raizal (San Andrés y Providencia)</option>
+            <option>Rom - Gitano</option><option>No aplica</option></select></div>
+        <div class="fg"><label>Descripción Grupo Poblacional</label>
+          <input type="text" name="grupoPobl" placeholder="Descripción del grupo"></div>
+        <div class="fg"><label>Víctima del Conflicto Armado <span class="req">*</span></label>
+          <select name="victimaConflicto" required><option value="">-- Seleccione --</option>
+            <option value="SI">SI</option><option value="NO">NO</option></select></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-yellow">📍 4. Ubicación Geográfica</div><div class="sb"><div class="g3">
+        <div class="fg"><label>Departamento <span class="req">*</span></label>
+          <select name="departamento" required onchange="cargaMuni(this)">
+            <option value="">-- Seleccione --</option>
+            <option>Cesar</option><option>Guajira</option><option>Magdalena</option></select></div>
+        <div class="fg"><label>Municipio <span class="req">*</span></label>
+          <select name="municipio" required id="selMuni"><option value="">-- Seleccione departamento --</option></select></div>
+        <div class="fg"><label>Zona</label>
+          <select name="zona"><option value="">-- Seleccione --</option>
+            <option>Rural</option><option>Urbana</option></select></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-dark">🏥 5. Afiliación EPS y Estado</div><div class="sb"><div class="g3">
+        <div class="fg"><label>Fecha de Afiliación EPS</label>
+          <input type="date" name="fechaAfiliacion"></div>
+        <div class="fg"><label>Régimen</label>
+          <select name="regimen"><option value="">-- Seleccione --</option>
+            <option>Subsidiado</option><option>Contributivo</option></select></div>
+        <div class="fg"><label>Cohorte de Riesgo</label>
+          <select name="cohorteRiesgo"><option value="">-- Seleccione --</option>
+            <option>No aplica</option><option>Cardio Cerebro Vascular y Metabólico</option>
+            <option>Enfermedades Respiratorias Crónicas</option><option>Enfermedades Huérfanas</option>
+            <option>Cáncer</option><option>VIH</option>
+            <option>Salud Mental</option><option>Materno Perinatal</option></select></div>
+        <div class="fg s3"><label>Descripción Estado Actual</label>
+          <textarea name="estadoActual" placeholder="Estado actual del afiliado"></textarea></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-red">♿ 6. Datos de Discapacidad</div><div class="sb"><div class="g3">
+        <div class="fg"><label>Tipo de Discapacidad <span class="req">*</span></label>
+          <select name="tipoDiscapacidad" required><option value="">-- Seleccione --</option>
+            <option>Física</option><option>Visual</option><option>Auditiva</option>
+            <option>Intelectual</option><option>Psicosocial (mental)</option>
+            <option>Sordoceguera</option><option>Múltiple</option></select></div>
+        <div class="fg"><label>Certificado de Discapacidad</label>
+          <select name="certificadoDisc"><option value="">-- Seleccione --</option>
+            <option>Sí</option><option>No</option><option>En Trámite</option></select></div>
+        <div class="fg"><label>Captación</label>
+          <input type="text" name="captacion" placeholder="Mecanismo de captación"></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-green">🔄 7. Proceso de Rehabilitación</div><div class="sb"><div class="g3">
+        <div class="fg"><label>¿Ha estado en proceso de rehabilitación?</label>
+          <select name="enRehabilitacion"><option value="">-- Seleccione --</option>
+            <option value="SI">SI</option><option value="NO">NO</option></select></div>
+        <div class="fg"><label>¿Actualmente asiste al programa?</label>
+          <select name="asistiendoRehab"><option value="">-- Seleccione --</option>
+            <option value="SI">SI</option><option value="NO">NO</option></select></div>
+        <div class="fg"><label>Número de veces en rehabilitación</label>
+          <input type="number" name="vecesRehab" min="0" placeholder="0"></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-blue">⚠ 8. Complicaciones Asociadas</div><div class="sb"><div class="g3">
+        <div class="fg"><label>¿Ha presentado complicaciones?</label>
+          <select name="complicaciones" onchange="togComp(this)"><option value="">-- Seleccione --</option>
+            <option value="SI">SI</option><option value="NO">NO</option></select></div>
+        <div class="fg" id="dSysAf" style="display:none"><label>Sistema Afectado</label>
+          <select name="sistemaAfectado"><option value="">-- Seleccione --</option>
+            <option>Musculoesquelético</option><option>Nervioso</option><option>Digestivo</option>
+            <option>Respiratorio</option><option>Cardiovascular-Metabólico</option>
+            <option>Inmunológico</option><option>No aplica</option></select></div>
+        <div class="fg" id="dTiComp" style="display:none"><label>Tipo de Complicación</label>
+          <select name="tipoComplicacion"><option value="">-- Seleccione --</option>
+            <option>Físicas</option><option>Neurológicas</option><option>Sensoriales</option>
+            <option>Psicológicas</option><option>Infecciones</option><option>No aplica</option></select></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-yellow">🔍 9. Origen de la Discapacidad</div><div class="sb"><div class="g3">
+        <div class="fg"><label>Origen</label>
+          <select name="origenDisc" onchange="togOrigen(this)"><option value="">-- Seleccione --</option>
+            <option value="Adquirida">Adquirida</option>
+            <option value="No se identifica">No se identifica</option>
+            <option value="Por nacimiento">Por nacimiento</option></select></div>
+        <div class="fg s2" id="dSubAdq" style="display:none"><label>Sub-causa — Adquirida</label>
+          <select name="subCausaAdquirida"><option value="">-- Seleccione --</option>
+            <option>Enfermedad General</option><option>Enfermedad Laboral</option>
+            <option>Accidente de Tránsito</option><option>Accidente en el Hogar</option>
+            <option>Accidente en el Centro Educativo</option><option>Accidente de Trabajo</option>
+            <option>Accidente Deportivo</option><option>Desastre Natural</option>
+            <option>Intoxicación</option><option>Envejecimiento</option>
+            <option>Consumo de Sustancias Psicoactivas</option><option>Lesión Autoinfligida</option>
+            <option>Conflicto Armado</option><option>Violencia Intrafamiliar</option>
+            <option>Violencia por Delincuencia Común</option></select></div>
+        <div class="fg s2" id="dSubNac" style="display:none"><label>Sub-causa — Por Nacimiento</label>
+          <select name="subCausaNacimiento"><option value="">-- Seleccione --</option>
+            <option>Alteración Genética o Hereditaria</option>
+            <option>Alteración del Desarrollo Embrionario</option>
+            <option>Complicaciones durante el Parto</option>
+            <option>Condiciones de Salud de la Madre durante el Embarazo</option></select></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-dark">📄 10. Atención en Salud</div><div class="sb"><div class="g2">
+        <div class="fg"><label>Soportes de Atención en Salud</label>
+          <textarea name="soportesSalud" placeholder="HCE, documentos, soportes..."></textarea></div>
+        <div class="fg"><label>Medicamentos</label>
+          <textarea name="medicamentos" placeholder="Listado de medicamentos prescritos"></textarea></div>
+        <div class="fg s2"><label>Estado del Tratamiento</label>
+          <textarea name="estadoTratamiento" placeholder="Estado actual del tratamiento médico"></textarea></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-red">👥 11. Datos del Cuidador</div><div class="sb"><div class="g3">
+        <div class="fg"><label>Nombre del Cuidador</label>
+          <input type="text" name="cuidador" placeholder="Nombre completo del cuidador"></div>
+        <div class="fg"><label>Parentesco con el Cuidador</label>
+          <input type="text" name="parentescoCuidador" placeholder="Madre, Padre, Cónyuge..."></div>
+        <div class="fg"><label>Teléfono de Contacto</label>
+          <input type="tel" name="telefono" placeholder="Número de contacto"></div>
+      </div></div></div>
+
+      <div class="card"><div class="sh sh-green">📝 12. Seguimiento y Observaciones</div><div class="sb"><div class="g2">
+        <div class="fg"><label>Conducta a Seguir</label>
+          <textarea name="conductaSeguir" placeholder="Plan de acción, remisiones..."></textarea></div>
+        <div class="fg"><label>Observaciones</label>
+          <textarea name="observacion" placeholder="Observaciones generales..."></textarea></div>
+      </div></div></div>
+
+      <div class="fac">
+        <button type="button" class="btn btn-ol w-auto" onclick="limpiarFormCampos()">🗑 Limpiar</button>
+        <button type="submit" class="btn btn-r w-auto">💾 Guardar Registro</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- REGISTROS -->
+  <div id="vRecs" class="main hidden">
+    <div class="card"><div class="sh sh-dark">📋 Registros Almacenados</div><div class="sb">
+      <div class="sb-bar">
+        <input type="text" id="fBuscar" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()">
+        <button class="btn btn-b btn-sm" onclick="exportarJSON()">⬇ JSON</button>
+        <button class="btn btn-y btn-sm" onclick="exportarCSV()">⬇ CSV</button>
+        <button class="btn btn-g btn-sm" onclick="sincronizar()">🔄 Sincronizar</button>
+        <button class="btn btn-sm" style="background:#E74C3C;color:#fff"
+                onclick="if(confirm('¿Eliminar TODOS los registros?'))borrarTodo()">🗑 Borrar Todo</button>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>#</th><th>Tipo/ID</th><th>Nombre</th><th>F.Nac.</th><th>Edad</th>
+          <th>Sexo</th><th>Dpto/Municipio</th><th>Discapacidad</th><th>Régimen</th>
+          <th>Rehab.</th><th>F.Registro</th><th>Acciones</th></tr></thead>
+        <tbody id="recBody"></tbody>
+      </table></div>
+      <p id="recCount" style="margin-top:9px;font-size:0.78rem;color:#777"></p>
+    </div></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modalBg" class="modal-bg hidden" onclick="if(event.target===this)cerrarModal()">
+  <div class="modal-box">
+    <div class="modal-head"><strong>📋 Detalle del Registro</strong>
+      <button onclick="cerrarModal()">×</button></div>
+    <div class="modal-body" id="modalCont"></div>
+  </div>
+</div>
+
+<script>
+const K = { users:'dusa_users', recs:'dusa_recs', sess:'dusa_sess' };
+const MUNIS = {
+  Cesar:['Aguachica','Agustín Codazzi','Astrea','Becerril','Bosconia','Chimichagua',
+         'Chiriguaná','Curumaní','El Copey','El Paso','Gamarra','González',
+         'La Gloria','La Jagua de Ibirico','La Paz','Manaure Balcón del Cesar',
+         'Pailitas','Pelaya','Pueblo Bello','Río de Oro','San Alberto',
+         'San Diego','San Martín','Tamalameque','Valledupar'],
+  Guajira:['Albania','Barrancas','Dibulla','Distracción','El Molino','Fonseca',
+           'Hatonuevo','La Jagua del Pilar','Maicao','Manaure','Riohacha',
+           'San Juan del Cesar','Uribia','Urumita','Villanueva'],
+  Magdalena:['Algarrobo','Aracataca','Ariguaní','Cerro San Antonio','Chivolo',
+             'Ciénaga','Concordia','El Banco','El Piñón','El Retén','Fundación',
+             'Guamal','Nueva Granada','Pedraza','Pijiño del Carmen','Pivijay','Plato',
+             'Puebloviejo','Remolino','Sabanas de San Ángel','Salamina',
+             'San Sebastián de Buenavista','San Zenón','Santa Ana',
+             'Santa Bárbara de Pinto','Santa Marta','Sitionuevo',
+             'Tenerife','Zapayán','Zona Bananera']
+};
+const LABELS = {
+  tipoId:'Tipo ID', identificacion:'Identificación', fechaRegistro:'Fecha Registro',
+  registradoPor:'Registrado Por', primerApellido:'Primer Apellido',
+  segundoApellido:'Segundo Apellido', primerNombre:'Primer Nombre',
+  segundoNombre:'Segundo Nombre', fechaNacimiento:'Fecha Nacimiento',
+  edad:'Edad', sexo:'Sexo', identidadGenero:'Identidad de Género',
+  perteneniaEtnica:'Pertenencia Étnica', grupoPobl:'Grupo Poblacional',
+  victimaConflicto:'Víctima Conflicto', departamento:'Departamento',
+  municipio:'Municipio', zona:'Zona', fechaAfiliacion:'Fecha Afiliación',
+  estadoActual:'Estado Actual', regimen:'Régimen', cohorteRiesgo:'Cohorte Riesgo',
+  tipoDiscapacidad:'Tipo Discapacidad', certificadoDisc:'Certificado Disc.',
+  captacion:'Captación', enRehabilitacion:'En Rehabilitación',
+  asistiendoRehab:'Asiste Rehab.', vecesRehab:'Nº Veces Rehab.',
+  complicaciones:'Complicaciones', sistemaAfectado:'Sistema Afectado',
+  tipoComplicacion:'Tipo Complicación', origenDisc:'Origen Discapacidad',
+  subCausaAdquirida:'Sub-causa Adquirida', subCausaNacimiento:'Sub-causa Nacimiento',
+  soportesSalud:'Soportes Salud', medicamentos:'Medicamentos',
+  estadoTratamiento:'Estado Tratamiento', cuidador:'Cuidador',
+  parentescoCuidador:'Parentesco Cuidador', telefono:'Teléfono',
+  conductaSeguir:'Conducta a Seguir', observacion:'Observación',
+  timestampRegistro:'Timestamp'
+};
+
+// ── Persistencia local ────────────────────────────────────────
+const getUsers = ()  => JSON.parse(localStorage.getItem(K.users) || '[]');
+const setUsers = u   => localStorage.setItem(K.users, JSON.stringify(u));
+const getLocal = ()  => JSON.parse(localStorage.getItem(K.recs)  || '[]');
+const setLocal = r   => localStorage.setItem(K.recs,  JSON.stringify(r));
+const getSess  = ()  => JSON.parse(localStorage.getItem(K.sess)  || 'null');
+const setSess  = s   => localStorage.setItem(K.sess,  JSON.stringify(s));
+
+// ── Drive via google.script.run ───────────────────────────────
+function setSyncStatus(estado, msg) {
+  const el  = document.getElementById('syncBadge');
+  if (!el) return;
+  const col = { ok:'#27AE60', err:'#E74C3C', carg:'#E67E22', off:'#7F8C8D' };
+  el.innerHTML = `<span style="color:${col[estado]||col.off}">⬤</span> ${msg}`;
+}
+
+function sincronizar() {
+  setSyncStatus('carg', 'Cargando Drive...');
+  google.script.run
+    .withSuccessHandler(function(json) {
+      const records = JSON.parse(json || '[]');
+      setLocal(records);
+      actualizarDash();
+      if (document.getElementById('vRecs') &&
+          !document.getElementById('vRecs').classList.contains('hidden')) {
+        renderRecs(records);
+      }
+      setSyncStatus('ok', 'Drive: ' + records.length + ' registro(s)');
+    })
+    .withFailureHandler(function(err) {
+      setSyncStatus('err', 'Error Drive: ' + (err.message || err));
+    })
+    .loadRecords();
+}
+
+// ── Auth ──────────────────────────────────────────────────────
+function doLogin() {
+  const u = inp('lUser'), p = inp('lPass');
+  if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
+  const user = getUsers().find(x => x.username === u && x.password === btoa(p));
+  if (!user) return alerta('alLogin', 'Usuario o contraseña incorrectos.', 'err');
+  setSess(user);
+  iniciarApp(user);
+}
+
+function doRegister() {
+  const name=inp('rName'), cargo=inp('rCargo'), u=inp('rUser'), p=inp('rPass'), p2=inp('rPass2');
+  if (!name||!u||!p) return alerta('alReg','Complete los campos obligatorios.','err');
+  if (p.length<6)    return alerta('alReg','Contraseña mínimo 6 caracteres.','err');
+  if (p!==p2)        return alerta('alReg','Las contraseñas no coinciden.','err');
+  const users = getUsers();
+  if (users.find(x=>x.username===u)) return alerta('alReg','El usuario ya existe.','err');
+  users.push({id:Date.now(),name,cargo,username:u,password:btoa(p),createdAt:new Date().toISOString()});
+  setUsers(users);
+  alerta('alReg','Cuenta creada. Redirigiendo...','ok');
+  setTimeout(()=>go('scrLogin'), 1800);
+}
+
+function doLogout() { localStorage.removeItem(K.sess); go('scrLogin'); }
+
+function iniciarApp(user) {
+  document.getElementById('hdrUser').textContent =
+    '👤 ' + user.name + (user.cargo ? ' · ' + user.cargo : '');
+  go('scrApp');
+  vista('dash');
+  setTimeout(sincronizar, 500);
+}
+
+// ── Navegación ────────────────────────────────────────────────
+function go(id) {
+  ['scrLogin','scrReg','scrApp'].forEach(s => {
+    document.getElementById(s).classList.toggle('hidden', s!==id);
+  });
+}
+
+function vista(viewName) {
+  ['dash','form','recs'].forEach(x => {
+    const cap = x.charAt(0).toUpperCase()+x.slice(1);
+    document.getElementById('v'+cap).classList.toggle('hidden', x!==viewName);
+    const nb = document.getElementById('n'+cap);
+    if (nb) nb.classList.toggle('on', x===viewName);
+  });
+  if (viewName==='dash') actualizarDash();
+  if (viewName==='recs') { renderRecs(getLocal()); sincronizar(); }
+  if (viewName==='form') {
+    document.getElementById('fFechaReg').value = hoy();
+    document.getElementById('fRegPor').value   = getSess()?.username || '';
+  }
+}
+
+// ── Formulario ────────────────────────────────────────────────
+function cargaMuni(sel) {
+  const muni = document.getElementById('selMuni');
+  muni.innerHTML = '<option value="">-- Seleccione --</option>';
+  (MUNIS[sel.value]||[]).forEach(m => { muni.innerHTML += `<option>${m}</option>`; });
+}
+function calcEdad(el) {
+  if (!el.value) return;
+  const h=new Date(), n=new Date(el.value);
+  let e=h.getFullYear()-n.getFullYear();
+  if(h.getMonth()<n.getMonth()||(h.getMonth()===n.getMonth()&&h.getDate()<n.getDate()))e--;
+  document.getElementById('fEdad').value = e>=0?e:0;
+}
+function togComp(sel) {
+  const s=sel.value==='SI';
+  document.getElementById('dSysAf').style.display  = s?'':'none';
+  document.getElementById('dTiComp').style.display = s?'':'none';
+}
+function togOrigen(sel) {
+  document.getElementById('dSubAdq').style.display = sel.value==='Adquirida'?'':'none';
+  document.getElementById('dSubNac').style.display = sel.value==='Por nacimiento'?'':'none';
+}
+function limpiarFormCampos() {
+  if (!confirm('¿Limpiar todos los campos?')) return;
+  document.getElementById('frmReg').reset();
+  document.getElementById('fEdad').value     = '';
+  document.getElementById('fFechaReg').value = hoy();
+  document.getElementById('fRegPor').value   = getSess()?.username||'';
+  document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
+  ['dSysAf','dTiComp','dSubAdq','dSubNac'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  document.getElementById('alForm').innerHTML = '';
+}
+
+// ── Guardar ───────────────────────────────────────────────────
+function guardar(e) {
+  e.preventDefault();
+  const fd=new FormData(document.getElementById('frmReg'));
+  const rec={};
+  for(const [k,v] of fd.entries()) rec[k]=v.trim();
+  rec.id=Date.now(); rec.timestampRegistro=new Date().toISOString();
+
+  // Guardar local
+  const local=getLocal(); local.push(rec); setLocal(local);
+  alerta('alForm', `✅ Guardado localmente. Sincronizando con Drive...`, 'ok');
+  window.scrollTo({top:0,behavior:'smooth'});
+
+  // Guardar en Drive
+  setSyncStatus('carg', 'Guardando en Drive...');
+  google.script.run
+    .withSuccessHandler(function(total) {
+      setSyncStatus('ok', 'Drive: '+total+' registro(s)');
+    })
+    .withFailureHandler(function(err) {
+      setSyncStatus('err', 'Local ✓ — Drive: '+err.message);
+    })
+    .saveRecord(JSON.stringify(rec));
+
+  // Reset form
+  document.getElementById('frmReg').reset();
+  document.getElementById('fEdad').value='';
+  document.getElementById('fFechaReg').value=hoy();
+  document.getElementById('fRegPor').value=getSess()?.username||'';
+  document.getElementById('selMuni').innerHTML='<option value="">-- Seleccione departamento --</option>';
+  ['dSysAf','dTiComp','dSubAdq','dSubNac'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+}
+
+// ── Tabla registros ───────────────────────────────────────────
+function renderRecs(recs) {
+  const tbody=document.getElementById('recBody');
+  if (!recs.length) {
+    tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:28px;color:#aaa">Sin registros</td></tr>';
+    document.getElementById('recCount').textContent=''; return;
+  }
+  tbody.innerHTML=recs.map((r,i)=>{
+    const nom=[r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ');
+    const fReg=r.fechaRegistro||(r.timestampRegistro||'').split('T')[0]||'-';
+    const rehab=r.asistiendoRehab==='SI'?'<span class="bdg bdg-g">SÍ</span>':
+                r.asistiendoRehab==='NO'?'<span class="bdg bdg-r">NO</span>':'-';
+    return `<tr>
+      <td>${i+1}</td>
+      <td><span class="bdg bdg-b">${r.tipoId||''}</span> ${r.identificacion||'-'}</td>
+      <td>${nom||'-'}</td><td>${r.fechaNacimiento||'-'}</td><td>${r.edad||'-'}</td>
+      <td>${r.sexo||'-'}</td><td>${r.departamento||''} / ${r.municipio||'-'}</td>
+      <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
+      <td>${r.regimen||'-'}</td><td>${rehab}</td><td>${fReg}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
+        <button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>
+      </td></tr>`;
+  }).join('');
+  document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
+}
+
+function filtrar() {
+  const q=document.getElementById('fBuscar').value.toLowerCase();
+  const all=getLocal();
+  renderRecs(!q?all:all.filter(r=>{
+    const nom=[r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ').toLowerCase();
+    return nom.includes(q)||(r.identificacion||'').includes(q)||
+           (r.municipio||'').toLowerCase().includes(q)||
+           (r.tipoDiscapacidad||'').toLowerCase().includes(q);
+  }));
+}
+
+function eliminar(id) {
+  if (!confirm('¿Eliminar este registro permanentemente?')) return;
+  const nuevos=getLocal().filter(r=>r.id!==id);
+  setLocal(nuevos); renderRecs(nuevos); actualizarDash();
+  setSyncStatus('carg','Eliminando en Drive...');
+  google.script.run
+    .withSuccessHandler(t=>setSyncStatus('ok','Drive: '+t+' registro(s)'))
+    .withFailureHandler(e=>setSyncStatus('err','Error Drive'))
+    .deleteRecord(id);
+}
+
+function borrarTodo() {
+  setLocal([]); renderRecs([]); actualizarDash();
+  google.script.run
+    .withSuccessHandler(()=>setSyncStatus('ok','Drive: 0 registros'))
+    .withFailureHandler(()=>setSyncStatus('err','Error Drive'))
+    .saveAllRecords('[]');
+}
+
+// ── Modal detalle ─────────────────────────────────────────────
+function verDetalle(id) {
+  const r=getLocal().find(x=>x.id===id); if(!r) return;
+  const nom=[r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ');
+  let html=`<h3 style="color:var(--pri);margin-bottom:13px">${nom||'Sin nombre'}</h3><div class="det-grid">`;
+  for(const [k,v] of Object.entries(r)){
+    if(k==='id'||!v||v==='') continue;
+    html+=`<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
+  }
+  html+=`</div><div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn btn-b btn-sm" onclick="expSingle(${id})">⬇ Exportar</button>
+    <button class="btn btn-sm btn-ol" onclick="cerrarModal()">Cerrar</button></div>`;
+  document.getElementById('modalCont').innerHTML=html;
+  document.getElementById('modalBg').classList.remove('hidden');
+}
+function cerrarModal(){ document.getElementById('modalBg').classList.add('hidden'); }
+
+// ── Export / Import ───────────────────────────────────────────
+function exportarJSON() {
+  const recs=getLocal(); if(!recs.length) return alert('No hay registros.');
+  descargar(JSON.stringify({sistema:'Dusakawi EPSI',exportadoEn:new Date().toISOString(),
+    totalRegistros:recs.length,registros:recs},null,2),
+    `dusakawi_discapacidad_${hoy()}.json`,'application/json');
+}
+function exportarCSV() {
+  const recs=getLocal(); if(!recs.length) return alert('No hay registros.');
+  const campos=Object.keys(LABELS);
+  const header=campos.map(c=>LABELS[c]).join(';');
+  const rows=recs.map(r=>campos.map(c=>'"'+(r[c]||'').toString().replace(/"/g,"'").replace(/\n/g,' ')+'"').join(';'));
+  descargar('﻿'+[header,...rows].join('\n'),`dusakawi_discapacidad_${hoy()}.csv`,'text/csv;charset=utf-8');
+}
+function expSingle(id) {
+  const r=getLocal().find(x=>x.id===id); if(!r) return;
+  const nom=[r.primerNombre,r.primerApellido].filter(Boolean).join('_').replace(/ /g,'');
+  descargar(JSON.stringify(r,null,2),`registro_${nom||r.id}_${hoy()}.json`,'application/json');
+}
+function importarJSON(e) {
+  const file=e.target.files[0]; if(!file) return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      const inc=data.registros||(Array.isArray(data)?data:[data]);
+      if(!inc.length) return alert('Sin registros válidos.');
+      const exist=getLocal(), ids=new Set(exist.map(r=>r.id));
+      const nuevos=inc.filter(r=>!ids.has(r.id));
+      const merged=[...exist,...nuevos];
+      setLocal(merged);
+      setSyncStatus('carg','Subiendo a Drive...');
+      google.script.run
+        .withSuccessHandler(t=>{setSyncStatus('ok','Drive: '+t+' registro(s)');actualizarDash();})
+        .withFailureHandler(()=>setSyncStatus('err','Error al subir a Drive'))
+        .saveAllRecords(JSON.stringify(merged));
+      alert('Importados: '+nuevos.length+' nuevo(s). Duplicados ignorados: '+(inc.length-nuevos.length));
+    }catch{ alert('Archivo JSON inválido.'); }
+    e.target.value='';
+  };
+  rd.readAsText(file);
+}
+function descargar(content,filename,type){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type}));
+  a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
+function actualizarDash() {
+  const recs=getLocal(), h=hoy(), m=h.substring(0,7);
+  document.getElementById('sTotal').textContent=recs.length;
+  document.getElementById('sHoy').textContent=recs.filter(r=>(r.fechaRegistro||r.timestampRegistro||'').startsWith(h)).length;
+  document.getElementById('sMes').textContent=recs.filter(r=>(r.fechaRegistro||r.timestampRegistro||'').startsWith(m)).length;
+  document.getElementById('sRehab').textContent=recs.filter(r=>r.asistiendoRehab==='SI').length;
+  const tbody=document.getElementById('dtBody');
+  const ult=[...recs].reverse().slice(0,5);
+  tbody.innerHTML=ult.length?ult.map(r=>{
+    const nom=[r.primerNombre,r.primerApellido].filter(Boolean).join(' ')||'-';
+    const f=r.fechaRegistro||(r.timestampRegistro||'').split('T')[0]||'-';
+    return `<tr>
+      <td><span class="bdg bdg-b">${r.tipoId||''}</span> ${r.identificacion||'-'}</td>
+      <td>${nom}</td><td>${r.departamento||''} / ${r.municipio||'-'}</td>
+      <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
+      <td>${r.regimen||'-'}</td><td>${f}</td></tr>`;
+  }).join(''):'<tr><td colspan="6" style="text-align:center;padding:18px;color:#aaa">Sin registros aún</td></tr>';
+}
+
+// ── Utilidades ────────────────────────────────────────────────
+function inp(id){ return (document.getElementById(id)?.value||'').trim(); }
+function hoy(){ return new Date().toISOString().split('T')[0]; }
+function alerta(id,msg,tipo){
+  const mapa={ok:'al-ok',err:'al-err',inf:'al-inf'};
+  const el=document.getElementById(id); if(!el) return;
+  el.innerHTML=`<div class="alert ${mapa[tipo]||'al-inf'}">${msg}</div>`;
+  if(tipo!=='err') setTimeout(()=>{el.innerHTML='';},5000);
+}
+
+// ── Init ──────────────────────────────────────────────────────
+(function init(){
+  const SU={id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
+    username:'egarcerant',password:btoa('1323456'),superadmin:true,
+    createdAt:'2024-01-01T00:00:00.000Z'};
+  let users=getUsers();
+  const idx=users.findIndex(u=>u.username==='egarcerant');
+  if(idx===-1) users.unshift(SU); else users[idx]={...users[idx],...SU};
+  if(users.length<2) users.push({id:1,name:'Administrador',cargo:'Admin',
+    username:'admin',password:btoa('admin123'),createdAt:new Date().toISOString()});
+  setUsers(users);
+  const sess=getSess();
+  if(sess){ iniciarApp(sess); } else { go('scrLogin'); }
+})();
+</script>
+</body>
+</html>
