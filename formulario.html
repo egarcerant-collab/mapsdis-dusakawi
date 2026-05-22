@@ -299,11 +299,25 @@ tr:hover td{background:#fafafa}
 
       <div class="card"><div class="sh sh-blue">🌍 3. Pertenencia Étnica y Grupo Poblacional</div><div class="sb"><div class="g3">
         <div class="fg"><label>Pertenencia Étnica</label>
-          <select name="perteneniaEtnica"><option value="">-- Seleccione --</option>
-            <option>Afrocolombiano</option><option>Indígena</option><option>Mulato</option>
+          <select name="perteneniaEtnica" onchange="togEtnia(this)">
+            <option value="">-- Seleccione --</option>
+            <option>Afrocolombiano</option>
+            <option value="Indígena">Indígena</option>
+            <option>Mulato</option>
             <option>Palanquero (de San Basilio)</option>
             <option>Raizal (San Andrés y Providencia)</option>
-            <option>Rom - Gitano</option><option>No aplica</option></select></div>
+            <option>Rom - Gitano</option>
+            <option>No aplica</option>
+          </select></div>
+        <div class="fg" id="dPuebloIndigena" style="display:none"><label>Pueblo Indígena</label>
+          <select name="puebloIndigena">
+            <option value="">-- Seleccione pueblo --</option>
+            <option>Arhuaco</option><option>Kogui</option><option>Wiwa</option>
+            <option>Yukpa</option><option>Kankuama</option><option>Wayuu</option>
+            <option>Chimila</option><option>Ingas</option><option>Rom</option>
+            <option>Uwas</option><option>Guahibo</option><option>Zenú</option>
+            <option>Pijao</option><option>Sin etnia específica</option>
+          </select></div>
         <div class="fg"><label>Descripción Grupo Poblacional</label>
           <input type="text" name="grupoPobl" placeholder="Descripción del grupo"></div>
         <div class="fg"><label>Víctima del Conflicto Armado <span class="req">*</span></label>
@@ -681,7 +695,7 @@ const LABELS = {
   segundoApellido:'Segundo Apellido', primerNombre:'Primer Nombre',
   segundoNombre:'Segundo Nombre', fechaNacimiento:'Fecha Nacimiento',
   edad:'Edad', sexo:'Sexo', identidadGenero:'Identidad de Género',
-  perteneniaEtnica:'Pertenencia Étnica', grupoPobl:'Grupo Poblacional',
+  perteneniaEtnica:'Pertenencia Étnica', puebloIndigena:'Pueblo Indígena', grupoPobl:'Grupo Poblacional',
   victimaConflicto:'Víctima Conflicto', departamento:'Departamento',
   municipio:'Municipio', zona:'Zona', fechaAfiliacion:'Fecha Afiliación',
   estadoActual:'Estado Actual', regimen:'Régimen', cohorteRiesgo:'Cohorte Riesgo',
@@ -848,6 +862,11 @@ function calcEdad(el) {
   if(h.getMonth()<n.getMonth()||(h.getMonth()===n.getMonth()&&h.getDate()<n.getDate()))e--;
   document.getElementById('fEdad').value = e>=0?e:0;
 }
+function togEtnia(sel) {
+  const show = sel.value === 'Indígena';
+  document.getElementById('dPuebloIndigena').style.display = show ? '' : 'none';
+  if (!show) { const s = document.querySelector('[name="puebloIndigena"]'); if (s) s.value = ''; }
+}
 function togComp(sel) {
   const s=sel.value==='SI';
   document.getElementById('dSysAf').style.display  = s?'':'none';
@@ -864,7 +883,7 @@ function limpiarFormCampos() {
   document.getElementById('fFechaReg').value = hoy();
   document.getElementById('fRegPor').value   = getSess()?.username||'';
   document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
-  ['dSysAf','dTiComp','dSubAdq','dSubNac'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena'].forEach(id=>{ document.getElementById(id).style.display='none'; });
   document.getElementById('alForm').innerHTML = '';
 }
 
