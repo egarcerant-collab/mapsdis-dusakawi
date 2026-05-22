@@ -582,9 +582,11 @@ function instalarPWA() {
 }
 
 // ── Capa API: soporta google.script.run y fetch() ─────────────
+const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbyofNGIMuzthcGFvyx9aay9jw5ZakPvvxrmaJ6NlBk-e3NpSdJYCxri2Nb2nVjGguOoLA/exec';
+
 const api = {
   _gsOk() { return typeof google !== 'undefined' && google && google.script; },
-  _url()  { return localStorage.getItem('dusa_gas_url') || ''; },
+  _url()  { return localStorage.getItem('dusa_gas_url') || GAS_URL_DEFAULT; },
   _post(body) {
     return fetch(this._url(), {
       method: 'POST',
