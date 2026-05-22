@@ -783,8 +783,38 @@ const api = {
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'deleteUser', id });
   },
+  // Comprime imágenes antes de subir (fotos → JPEG 80%, max 1400px)
+  // PDFs y otros archivos se devuelven sin cambios
+  _comprimirSiImagen(file) {
+    return new Promise(res => {
+      if (!file.type.startsWith('image/')) { res(file); return; }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1400;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => {
+          const nombre = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+          res(new File([blob], nombre, { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.80);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); res(file); };
+      img.src = url;
+    });
+  },
   uploadCertificado(recordId, file, onProgress) {
     return new Promise((res, rej) => {
+      // Comprimir imagen antes de leer como base64
+      this._comprimirSiImagen(file).then(fileOpt => {
+      file = fileOpt;
       const reader = new FileReader();
       reader.onload = async ev => {
         try {
@@ -828,6 +858,7 @@ const api = {
       };
       reader.onerror = rej;
       reader.readAsDataURL(file);
+      }); // fin _comprimirSiImagen
     });
   }
 };
@@ -1329,10 +1360,12 @@ async function guardar(e) {
     // Certificado: mantener URL existente si no se subió uno nuevo
     const fileInput = document.getElementById('fileCertificado');
     if (fileInput?.files[0]) {
-      alerta('alForm', '⏳ Enviando certificado a Drive (puede tomar 15–30 s)...', 'inf');
+      const fSize = (fileInput.files[0].size / 1024).toFixed(0);
+      const esImg = fileInput.files[0].type.startsWith('image/');
+      alerta('alForm', `⏳ ${esImg ? 'Comprimiendo y enviando' : 'Enviando'} certificado (${fSize} KB)...`, 'inf');
       try {
         rec.certificadoUrl = await api.uploadCertificado(rec.id, fileInput.files[0],
-          (i, t) => alerta('alForm', `⏳ Verificando subida... ${i}/${t}`, 'inf'));
+          (i, t) => alerta('alForm', `⏳ Subiendo a Drive... ${Math.round(i/t*100)}%`, 'inf'));
       } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
     } else if (original?.certificadoUrl) {
       rec.certificadoUrl = original.certificadoUrl;
@@ -1359,10 +1392,12 @@ async function guardar(e) {
     rec.timestampRegistro = new Date().toISOString();
     const fileInput = document.getElementById('fileCertificado');
     if (fileInput?.files[0]) {
-      alerta('alForm', '⏳ Enviando certificado a Drive (puede tomar 15–30 s)...', 'inf');
+      const fSize2 = (fileInput.files[0].size / 1024).toFixed(0);
+      const esImg2 = fileInput.files[0].type.startsWith('image/');
+      alerta('alForm', `⏳ ${esImg2 ? 'Comprimiendo y enviando' : 'Enviando'} certificado (${fSize2} KB)...`, 'inf');
       try {
         const certUrl = await api.uploadCertificado(rec.id, fileInput.files[0],
-          (i, t) => alerta('alForm', `⏳ Verificando subida... ${i}/${t}`, 'inf'));
+          (i, t) => alerta('alForm', `⏳ Subiendo a Drive... ${Math.round(i/t*100)}%`, 'inf'));
         rec.certificadoUrl = certUrl;
         document.getElementById('certificadoUrl').value = certUrl;
       } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
