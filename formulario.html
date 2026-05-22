@@ -238,9 +238,9 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
   <div class="nav">
-    <button class="nb on" id="nDash" onclick="vista('dash')">📊 Dashboard</button>
+    <button class="nb on" id="nRecs" onclick="vista('recs')">📋 Registros</button>
+    <button class="nb" id="nDash" onclick="vista('dash')">📊 Dashboard</button>
     <button class="nb" id="nForm" onclick="vista('form')">➕ Nuevo Registro</button>
-    <button class="nb" id="nRecs" onclick="vista('recs')">📋 Registros</button>
     <button class="nb hidden" id="nAdmin" onclick="vista('admin')">👥 Usuarios</button>
     <button class="nb" onclick="exportarJSON()">⬇ Exportar JSON</button>
     <button class="nb" onclick="exportarCSV()">⬇ Exportar CSV</button>
@@ -1003,7 +1003,7 @@ function iniciarApp(user) {
   const btnAdmin = document.getElementById('nAdmin');
   if (btnAdmin) btnAdmin.classList.toggle('hidden', !user.superadmin);
   go('scrApp');
-  vista('dash');
+  vista('recs');
   setTimeout(sincronizar, 500);
   // Guardar usuario en Drive para que otros dispositivos puedan iniciar sesión
   if (navigator.onLine && api._url()) {
@@ -1437,8 +1437,27 @@ function verDetalle(id) {
   for (const [k,v] of Object.entries(r)) {
     if (k==='id'||k==='nota'||k==='notaEditadaPor'||k==='notaEditadaEn'||!v||v==='') continue;
     if (k==='certificadoUrl') {
-      html += `<div class="det-item s2"><div class="det-label">${LABELS[k]||k}</div>
-        <div class="det-val"><a href="${v}" target="_blank" style="color:#1565C0;font-weight:600">📄 Ver certificado en Drive</a></div></div>`;
+      const fid = (v.match(/\/d\/([a-zA-Z0-9_-]+)\//) || [])[1] || '';
+      const previewUrl = fid ? `https://drive.google.com/file/d/${fid}/preview` : v;
+      const thumbUrl   = fid ? `https://drive.google.com/thumbnail?id=${fid}&sz=w320` : '';
+      html += `<div class="det-item s2">
+        <div class="det-label">${LABELS[k]||k}</div>
+        <div class="det-val" style="margin-top:6px">
+          ${fid ? `
+          <div style="border:1px solid #DEE2E6;border-radius:8px;overflow:hidden;background:#f5f5f5;max-width:100%">
+            <img src="${thumbUrl}" alt="Miniatura certificado"
+              style="width:100%;max-height:220px;object-fit:contain;display:block;cursor:pointer"
+              onclick="window.open('${v}','_blank')"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+            <iframe src="${previewUrl}" style="display:none;width:100%;height:220px;border:none"
+              allow="autoplay" onload="this.style.display='block'"></iframe>
+          </div>
+          <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+            <a href="${v}" target="_blank" style="color:#1565C0;font-weight:600;font-size:0.82rem">📄 Abrir en Drive</a>
+            <span style="color:#bbb;font-size:0.75rem">| clic en imagen para ampliar</span>
+          </div>` : `<a href="${v}" target="_blank" style="color:#1565C0;font-weight:600">📄 Ver certificado en Drive</a>`}
+        </div>
+      </div>`;
     } else {
       html += `<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
     }
