@@ -674,15 +674,26 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then(reg => {
+        // Forzar búsqueda de actualización inmediatamente
+        reg.update();
         reg.addEventListener('updatefound', () => {
           const nw = reg.installing;
           nw.addEventListener('statechange', () => {
-            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            if (nw.state === 'installed') {
+              // Activar nuevo SW sin esperar que el usuario cierre pestañas
               nw.postMessage('skipWaiting');
+            }
+            if (nw.state === 'activated') {
+              // Recargar para usar el SW nuevo y obtener HTML fresco
+              window.location.reload();
             }
           });
         });
       }).catch(() => {});
+    // Si el SW se activa desde otro contexto, recargar también
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
   });
 }
 

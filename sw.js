@@ -1,16 +1,15 @@
 // ================================================================
 //  DUSAKAWI EPSI — Service Worker (PWA Offline)
-//  Versión: 3.0
+//  Versión: 5.0
 // ================================================================
 
-const CACHE = 'dusakawi-mapsdis-v4';
+const CACHE = 'dusakawi-mapsdis-v5';
 const ASSETS = [
-  './formulario.html',
   './manifest.json',
   './logo_dusakawi.png'
 ];
 
-// Instalación: guarda archivos en caché
+// Instalación: guarda assets estáticos en caché (NO el HTML)
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE).then(cache => cache.addAll(ASSETS))
@@ -28,8 +27,26 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Interceptar peticiones: caché primero, luego red
+// Interceptar peticiones
 self.addEventListener('fetch', event => {
+  const url = event.request.url;
+
+  // formulario.html → RED PRIMERO para siempre tener la versión más reciente
+  // Solo cae a caché si no hay conexión
+  if (url.includes('formulario.html') || url.endsWith('/')) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        if (response && response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match('./formulario.html'))
+    );
+    return;
+  }
+
+  // Otros recursos (logo, manifest, etc.): caché primero
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
@@ -39,10 +56,7 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE).then(cache => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => {
-        // Sin conexión: retornar el formulario principal
-        return caches.match('./formulario.html');
-      });
+      }).catch(() => caches.match('./formulario.html'));
     })
   );
 });
