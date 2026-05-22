@@ -407,8 +407,18 @@ tr:hover td{background:#fafafa}
           <div id="resumenMultiple" style="font-size:0.78rem;color:#1B6B2A;margin-top:5px;font-weight:600"></div>
         </div>
         <div class="fg"><label>Certificado de Discapacidad</label>
-          <select name="certificadoDisc"><option value="">-- Seleccione --</option>
-            <option>Sí</option><option>No</option><option>En Trámite</option></select></div>
+          <select name="certificadoDisc" onchange="togCertificado(this)">
+            <option value="">-- Seleccione --</option>
+            <option>Sí</option><option>No</option><option>En Trámite</option>
+          </select></div>
+        <div class="fg s3" id="dCertificado" style="display:none">
+          <label>Adjuntar Certificado <span style="font-weight:400;color:#888">(PDF o imagen, máx. 5 MB)</span></label>
+          <input type="file" id="fileCertificado" accept="application/pdf,image/*"
+                 onchange="previsualizarCertificado(this)"
+                 style="width:100%;padding:7px;border:1.5px dashed #1B6B2A;border-radius:6px;background:#f8fff8;cursor:pointer">
+          <div id="prevCertificado" style="margin-top:8px"></div>
+          <input type="hidden" name="certificadoUrl" id="certificadoUrl">
+        </div>
         <div class="fg"><label>Captación</label>
           <input type="text" name="captacion" placeholder="Mecanismo de captación"></div>
       </div></div></div>
@@ -686,6 +696,21 @@ const api = {
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveAllRecords(JSON.stringify(records)));
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
     return this._get({ action: 'saveAll', records });
+  },
+  uploadCertificado(recordId, file) {
+    return new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const b64 = ev.target.result.split(',')[1];
+        const body = JSON.stringify({ action: 'uploadCertificado', recordId, fileName: file.name, base64Data: b64, mimeType: file.type });
+        const url = this._gsOk() ? '' : this._url();
+        if (!url && !this._gsOk()) { rej(new Error('Sin URL de servidor')); return; }
+        fetch(url || this._url(), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body })
+          .then(r => r.json()).then(d => { if (!d.ok) throw new Error(d.error); res(d.data); }).catch(rej);
+      };
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
   }
 };
 
@@ -746,7 +771,7 @@ const LABELS = {
   victimaConflicto:'Víctima Conflicto', departamento:'Departamento',
   municipio:'Municipio', zona:'Zona', fechaAfiliacion:'Fecha Afiliación',
   estadoActual:'Estado Actual', regimen:'Régimen', cohorteRiesgo:'Cohorte Riesgo',
-  tipoDiscapacidad:'Tipo Discapacidad', discapacidadesMultiple:'Discapacidades (Múltiple)', certificadoDisc:'Certificado Disc.',
+  tipoDiscapacidad:'Tipo Discapacidad', discapacidadesMultiple:'Discapacidades (Múltiple)', certificadoDisc:'Certificado Disc.', certificadoUrl:'Certificado (enlace)',
   captacion:'Captación', enRehabilitacion:'En Rehabilitación',
   asistiendoRehab:'Asiste Rehab.', vecesRehab:'Nº Veces Rehab.',
   complicaciones:'Complicaciones', sistemaAfectado:'Sistema Afectado',
@@ -909,6 +934,33 @@ function calcEdad(el) {
   if(h.getMonth()<n.getMonth()||(h.getMonth()===n.getMonth()&&h.getDate()<n.getDate()))e--;
   document.getElementById('fEdad').value = e>=0?e:0;
 }
+function togCertificado(sel) {
+  const mostrar = sel.value === 'Sí';
+  document.getElementById('dCertificado').style.display = mostrar ? '' : 'none';
+  if (!mostrar) {
+    document.getElementById('fileCertificado').value = '';
+    document.getElementById('prevCertificado').innerHTML = '';
+    document.getElementById('certificadoUrl').value = '';
+  }
+}
+
+function previsualizarCertificado(input) {
+  const file = input.files[0]; if (!file) return;
+  const prev = document.getElementById('prevCertificado');
+  if (file.size > 5 * 1024 * 1024) {
+    prev.innerHTML = '<span style="color:#E74C3C;font-size:0.82rem">⚠ El archivo supera 5 MB. Reduzca el tamaño e intente de nuevo.</span>';
+    input.value = ''; return;
+  }
+  if (file.type.startsWith('image/')) {
+    const url = URL.createObjectURL(file);
+    prev.innerHTML = `<img src="${url}" style="max-height:120px;border-radius:6px;border:1px solid #ccc;margin-top:4px">
+      <div style="font-size:0.78rem;color:#555;margin-top:4px">📎 ${file.name} (${(file.size/1024).toFixed(0)} KB) — se subirá al guardar</div>`;
+  } else {
+    prev.innerHTML = `<div style="padding:10px;background:#f0f4ff;border-radius:6px;font-size:0.82rem;color:#1565C0">
+      📄 <strong>${file.name}</strong> — ${(file.size/1024).toFixed(0)} KB — se subirá al guardar</div>`;
+  }
+}
+
 function togMultiple(sel) {
   const esMultiple = sel.value === 'Múltiple';
   document.getElementById('dMultiple').style.display = esMultiple ? '' : 'none';
@@ -946,10 +998,13 @@ function limpiarFormCampos() {
   document.getElementById('fFechaReg').value = hoy();
   document.getElementById('fRegPor').value   = getSess()?.username||'';
   document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
-  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena','dMultiple'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena','dMultiple','dCertificado'].forEach(id=>{ document.getElementById(id).style.display='none'; });
   document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(c=>c.checked=false);
   document.getElementById('discapacidadesMultiple').value='';
   document.getElementById('resumenMultiple').textContent='';
+  document.getElementById('fileCertificado').value='';
+  document.getElementById('prevCertificado').innerHTML='';
+  document.getElementById('certificadoUrl').value='';
   document.getElementById('alForm').innerHTML = '';
 }
 
@@ -961,6 +1016,19 @@ async function guardar(e) {
   for (const [k, v] of fd.entries()) rec[k] = v.trim();
   rec.id = Date.now();
   rec.timestampRegistro = new Date().toISOString();
+
+  // Subir certificado si hay archivo seleccionado
+  const fileInput = document.getElementById('fileCertificado');
+  if (fileInput?.files[0]) {
+    alerta('alForm', '⏳ Subiendo certificado a Drive...', 'inf');
+    try {
+      const certUrl = await api.uploadCertificado(rec.id, fileInput.files[0]);
+      rec.certificadoUrl = certUrl;
+      document.getElementById('certificadoUrl').value = certUrl;
+    } catch {
+      alerta('alForm', '⚠ No se pudo subir el certificado. Se guardará el registro sin el archivo.', 'err');
+    }
+  }
 
   // Guardar local siempre primero
   const local = getLocal(); local.push(rec); setLocal(local);
@@ -1071,7 +1139,12 @@ function verDetalle(id) {
   let html = `<h3 style="color:var(--pri);margin-bottom:13px">${nom||'Sin nombre'}</h3><div class="det-grid">`;
   for (const [k,v] of Object.entries(r)) {
     if (k==='id'||k==='nota'||k==='notaEditadaPor'||k==='notaEditadaEn'||!v||v==='') continue;
-    html += `<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
+    if (k==='certificadoUrl') {
+      html += `<div class="det-item s2"><div class="det-label">${LABELS[k]||k}</div>
+        <div class="det-val"><a href="${v}" target="_blank" style="color:#1565C0;font-weight:600">📄 Ver certificado en Drive</a></div></div>`;
+    } else {
+      html += `<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
+    }
   }
   html += `</div>`;
 

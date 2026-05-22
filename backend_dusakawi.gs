@@ -50,29 +50,59 @@ function doGet(e) {
   }
 }
 
-// ── doPost mantenido como respaldo ─────────────────────────────
+// ── doPost: upload de certificados y respaldo de otras acciones ─
 function doPost(e) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
   try {
     const body = JSON.parse(e.postData.contents);
-    let result;
-    if (body.action === 'save') {
-      result = saveRecordSafe(body.record);
-    } else if (body.action === 'delete') {
-      result = deleteRecordSafe(body.id);
-    } else if (body.action === 'saveAll') {
-      saveRecords(body.records);
-      result = body.records.length;
-    } else {
-      throw new Error('Acción desconocida: ' + body.action);
+
+    if (body.action === 'uploadCertificado') {
+      const url = saveCertificado(body.recordId, body.fileName, body.base64Data, body.mimeType);
+      return buildResponse({ ok: true, data: url });
     }
-    return buildResponse({ ok: true, data: result });
+
+    // Otras acciones con lock
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      let result;
+      if (body.action === 'save') {
+        result = saveRecordSafe(body.record);
+      } else if (body.action === 'delete') {
+        result = deleteRecordSafe(body.id);
+      } else if (body.action === 'saveAll') {
+        saveRecords(body.records);
+        result = body.records.length;
+      } else {
+        throw new Error('Acción desconocida: ' + body.action);
+      }
+      return buildResponse({ ok: true, data: result });
+    } finally {
+      lock.releaseLock();
+    }
   } catch (err) {
     return buildResponse({ ok: false, error: err.message });
-  } finally {
-    lock.releaseLock();
   }
+}
+
+// ── Guardar certificado en subcarpeta Drive ────────────────────
+function saveCertificado(recordId, fileName, base64Data, mimeType) {
+  const folder = getCertificadosFolder();
+  const safeName = 'cert_' + recordId + '_' + fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Eliminar versión previa si existe
+  const iter = folder.getFilesByName(safeName);
+  if (iter.hasNext()) iter.next().setTrashed(true);
+  // Crear archivo
+  const decoded = Utilities.base64Decode(base64Data);
+  const blob    = Utilities.newBlob(decoded, mimeType, safeName);
+  const file    = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return 'https://drive.google.com/file/d/' + file.getId() + '/view';
+}
+
+function getCertificadosFolder() {
+  const parent = getFolder();
+  const iter   = parent.getFoldersByName('certificados');
+  return iter.hasNext() ? iter.next() : parent.createFolder('certificados');
 }
 
 // ── Funciones llamadas desde HTML vía google.script.run ────────
