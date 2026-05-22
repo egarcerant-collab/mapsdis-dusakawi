@@ -15,33 +15,48 @@
 const FILE_NAME = 'dusakawi_registros_discapacidad.json';
 const FOLDER_ID = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
 
-// ── Sirve HTML o datos vía GET ─────────────────────────────────
+// ── API unificada vía GET (evita problema de redirect con POST) ─
 function doGet(e) {
-  const action = (e.parameter || {}).action;
+  const params = e.parameter || {};
+  const action = params.action;
 
-  if (action === 'load') {
-    const lock = LockService.getScriptLock();
-    lock.waitLock(10000);
-    try {
-      return buildResponse({ ok: true, data: getRecords() });
-    } finally {
-      lock.releaseLock();
-    }
+  if (!action) {
+    return HtmlService.createHtmlOutputFromFile('formulario')
+      .setTitle('Dusakawi EPSI — Registro de Discapacidad')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
-  return HtmlService.createHtmlOutputFromFile('formulario')
-    .setTitle('Dusakawi EPSI — Registro de Discapacidad')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (action === 'load') {
+      return buildResponse({ ok: true, data: getRecords() });
+    } else if (action === 'save') {
+      const record = JSON.parse(params.record);
+      return buildResponse({ ok: true, data: saveRecordSafe(record) });
+    } else if (action === 'delete') {
+      return buildResponse({ ok: true, data: deleteRecordSafe(params.id) });
+    } else if (action === 'saveAll') {
+      const records = JSON.parse(params.records);
+      saveRecords(records);
+      return buildResponse({ ok: true, data: records.length });
+    } else {
+      throw new Error('Acción desconocida: ' + action);
+    }
+  } catch (err) {
+    return buildResponse({ ok: false, error: err.message });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
-// ── API HTTP desde GitHub Pages u otros orígenes (POST text/plain) ──
+// ── doPost mantenido como respaldo ─────────────────────────────
 function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     const body = JSON.parse(e.postData.contents);
     let result;
-
     if (body.action === 'save') {
       result = saveRecordSafe(body.record);
     } else if (body.action === 'delete') {
@@ -52,7 +67,6 @@ function doPost(e) {
     } else {
       throw new Error('Acción desconocida: ' + body.action);
     }
-
     return buildResponse({ ok: true, data: result });
   } catch (err) {
     return buildResponse({ ok: false, error: err.message });

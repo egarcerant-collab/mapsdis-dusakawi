@@ -595,30 +595,36 @@ const api = {
       body: JSON.stringify(body)
     }).then(r => r.json()).then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
   },
+  _get(params) {
+    const qs = Object.entries(params).map(([k,v]) =>
+      k + '=' + encodeURIComponent(typeof v === 'object' ? JSON.stringify(v) : v)
+    ).join('&');
+    return fetch(this._url() + '?' + qs).then(r => r.json())
+      .then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
+  },
   load() {
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]'))).withFailureHandler(rej).loadRecords());
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    return fetch(this._url() + '?action=load').then(r => r.json())
-      .then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
+    return this._get({ action: 'load' });
   },
   save(record) {
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveRecord(JSON.stringify(record)));
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    return this._post({ action: 'save', record });
+    return this._get({ action: 'save', record });
   },
   remove(id) {
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).deleteRecord(id));
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    return this._post({ action: 'delete', id });
+    return this._get({ action: 'delete', id });
   },
   saveAll(records) {
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveAllRecords(JSON.stringify(records)));
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    return this._post({ action: 'saveAll', records });
+    return this._get({ action: 'saveAll', records });
   }
 };
 
@@ -1249,6 +1255,8 @@ function cerrarModalUser() {
   const sess=getSess();
   if(sess){ iniciarApp(sess); } else { go('scrLogin'); }
   actualizarEstadoConexion();
+  // Auto-sincronizar cada 5 minutos para ver registros de otros usuarios
+  setInterval(() => { if(getSess() && navigator.onLine) sincronizar(); }, 5 * 60 * 1000);
 })();
 </script>
 </body>
