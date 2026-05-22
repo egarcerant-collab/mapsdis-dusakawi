@@ -714,6 +714,8 @@ function instalarPWA() {
 }
 
 // ── Capa API: soporta google.script.run y fetch() ─────────────
+// ⚠ Si redeployó GAS con nueva URL, configúrela en Admin > Configuración del Servidor
+// o actualice GAS_URL_DEFAULT con la nueva URL completa.
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbyofNGIMuzthcGFvyx9aay9jw5ZakPvvxrmaJ6NlBk-e3NpSdJYCxri2Nb2nVjGguOoLA/exec';
 
 const api = {
@@ -758,14 +760,23 @@ const api = {
     return this._get({ action: 'saveAll', records });
   },
   loadUsers() {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]')))
+        .withFailureHandler(rej).loadUsersGAS());
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'loadUsers' });
   },
   saveUser(user) {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej)
+        .saveUserGAS(JSON.stringify(user)));
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'saveUser', user });
   },
   removeUser(id) {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej)
+        .deleteUserGAS(id));
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'deleteUser', id });
   },
@@ -960,7 +971,7 @@ async function doLogin() {
   const u = inp('lUser'), p = inp('lPass');
   if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
   let user = getUsers().find(x => x.username === u && x.password === btoa(p));
-  if (!user && navigator.onLine && api._url()) {
+  if (!user && (navigator.onLine || api._gsOk())) {
     alerta('alLogin', '⏳ Verificando en servidor...', 'inf');
     try {
       const driveUsers = await api.loadUsers();
@@ -970,10 +981,18 @@ async function doLogin() {
         const idx = local.findIndex(x => String(x.id) === String(user.id));
         if (idx >= 0) local[idx] = user; else local.push(user);
         setUsers(local);
+      } else if (driveUsers.length > 0) {
+        // Hay usuarios en Drive pero ninguno coincide
+        alerta('alLogin', '❌ Usuario o contraseña incorrectos. Verifique con el administrador.', 'err');
+        return;
       }
-    } catch (_) {}
+    } catch (err) {
+      // Error de conexión — mostrar mensaje útil
+      alerta('alLogin', '⚠ No se pudo verificar con el servidor. ' + (err.message || '') + ' Intente de nuevo.', 'err');
+      return;
+    }
   }
-  if (!user) return alerta('alLogin', 'Usuario o contraseña incorrectos.', 'err');
+  if (!user) return alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
   setSess(user);
   iniciarApp(user);
 }

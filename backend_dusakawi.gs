@@ -215,6 +215,40 @@ function saveRecords(records) {
   }
 }
 
+// ── Funciones expuestas a google.script.run ────────────────────
+// Necesarias para que el frontend las llame directamente cuando
+// se ejecuta dentro del contexto de GAS (sin necesidad de fetch).
+
+function loadUsersGAS() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    return JSON.stringify(getUsersFromDrive());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveUserGAS(userJson) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return saveUserSafe(JSON.parse(userJson));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteUserGAS(id) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return deleteUserSafe(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // ── Gestión de Usuarios en Drive ──────────────────────────────
 function getUsersFromDrive() {
   const folder = getFolder();
