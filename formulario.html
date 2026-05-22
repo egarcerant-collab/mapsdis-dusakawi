@@ -463,6 +463,24 @@ tr:hover td{background:#fafafa}
         <div id="adminUserList"></div>
       </div>
     </div>
+    <div class="card">
+      <div class="sh sh-blue">⚙ Configuración del Servidor (Drive)</div>
+      <div class="sb">
+        <p style="font-size:0.82rem;color:#555;margin-bottom:12px">
+          URL del Web App de Google Apps Script. Requerida cuando la app se usa desde GitHub Pages.<br>
+          Déjela vacía si accede directamente desde la URL de Google Apps Script.
+        </p>
+        <div class="fg">
+          <label>URL del Web App <span style="font-weight:400;color:#888">(script.google.com/macros/s/.../exec)</span></label>
+          <input type="url" id="cfgGasUrl" placeholder="https://script.google.com/macros/s/XXXXXX/exec">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-r btn-sm" onclick="guardarConfigGasUrl()">💾 Guardar URL</button>
+          <button class="btn btn-b btn-sm" onclick="probarConexionDrive()">🔌 Probar conexión</button>
+        </div>
+        <div id="alCfg" style="margin-top:10px"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -563,13 +581,51 @@ function instalarPWA() {
   });
 }
 
+// ── Capa API: soporta google.script.run y fetch() ─────────────
+const api = {
+  _gsOk() { return typeof google !== 'undefined' && google && google.script; },
+  _url()  { return localStorage.getItem('dusa_gas_url') || ''; },
+  _post(body) {
+    return fetch(this._url(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
+  },
+  load() {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]'))).withFailureHandler(rej).loadRecords());
+    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
+    return fetch(this._url() + '?action=load').then(r => r.json())
+      .then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
+  },
+  save(record) {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveRecord(JSON.stringify(record)));
+    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
+    return this._post({ action: 'save', record });
+  },
+  remove(id) {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej).deleteRecord(id));
+    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
+    return this._post({ action: 'delete', id });
+  },
+  saveAll(records) {
+    if (this._gsOk()) return new Promise((res, rej) =>
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveAllRecords(JSON.stringify(records)));
+    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
+    return this._post({ action: 'saveAll', records });
+  }
+};
+
 // ── PWA: Online / Offline ─────────────────────────────────────
 function actualizarEstadoConexion() {
   const offline = !navigator.onLine;
   const bar = document.getElementById('offlineBar');
   if (bar) bar.classList.toggle('hidden', !offline);
   document.body.style.paddingTop = offline ? '38px' : '';
-  if (!offline) procesarColaPendiente();
+  if (!offline) sincronizar();
 }
 window.addEventListener('online',  actualizarEstadoConexion);
 window.addEventListener('offline', actualizarEstadoConexion);
@@ -590,21 +646,6 @@ function actualizarBadgePendiente() {
   if (!badge) return;
   if (n > 0) badge.innerHTML +=
     ` <span class="pending-dot" title="${n} pendiente(s)">${n}</span>`;
-}
-
-function procesarColaPendiente() {
-  if (typeof google === 'undefined' || !google.script) return;
-  const q = getQueue(); if (!q.length) return;
-  setSyncStatus('carg', 'Sincronizando '+q.length+' pendiente(s)...');
-  const rec = q[0];
-  google.script.run
-    .withSuccessHandler(function(total) {
-      const nq = getQueue(); nq.shift(); setQueue(nq);
-      setSyncStatus('ok', 'Drive: '+total+' registro(s)');
-      if (getQueue().length > 0) setTimeout(procesarColaPendiente, 800);
-    })
-    .withFailureHandler(function() {})
-    .saveRecord(JSON.stringify(rec));
 }
 
 const K = { users:'dusa_users', recs:'dusa_recs', sess:'dusa_sess' };
@@ -656,7 +697,7 @@ const setLocal = r   => localStorage.setItem(K.recs,  JSON.stringify(r));
 const getSess  = ()  => JSON.parse(localStorage.getItem(K.sess)  || 'null');
 const setSess  = s   => localStorage.setItem(K.sess,  JSON.stringify(s));
 
-// ── Drive via google.script.run ───────────────────────────────
+// ── Drive: estado visual ───────────────────────────────────────
 function setSyncStatus(estado, msg) {
   const el  = document.getElementById('syncBadge');
   if (!el) return;
@@ -664,23 +705,67 @@ function setSyncStatus(estado, msg) {
   el.innerHTML = `<span style="color:${col[estado]||col.off}">⬤</span> ${msg}`;
 }
 
-function sincronizar() {
-  setSyncStatus('carg', 'Cargando Drive...');
-  google.script.run
-    .withSuccessHandler(function(json) {
-      const records = JSON.parse(json || '[]');
-      setLocal(records);
-      actualizarDash();
-      if (document.getElementById('vRecs') &&
-          !document.getElementById('vRecs').classList.contains('hidden')) {
-        renderRecs(records);
-      }
-      setSyncStatus('ok', 'Drive: ' + records.length + ' registro(s)');
-    })
-    .withFailureHandler(function(err) {
-      setSyncStatus('err', 'Error Drive: ' + (err.message || err));
-    })
-    .loadRecords();
+// ── Sincronización bidireccional ordenada ─────────────────────
+let _syncing = false;
+
+async function sincronizar() {
+  if (_syncing) return;
+
+  const tieneApi = api._gsOk() || api._url();
+  if (!tieneApi) {
+    setSyncStatus('off', 'Configure URL del servidor en Administración');
+    return;
+  }
+  if (!navigator.onLine) {
+    setSyncStatus('off', 'Sin internet — datos guardados localmente');
+    return;
+  }
+
+  _syncing = true;
+  try {
+    // 1. Subir cola offline en orden (FIFO, uno por uno)
+    const queue = getQueue();
+    for (let i = 0; i < queue.length; i++) {
+      setSyncStatus('carg', `Subiendo pendiente ${i + 1}/${queue.length}...`);
+      await api.save(queue[i]);
+      const nq = getQueue(); nq.shift(); setQueue(nq);
+    }
+
+    // 2. Descargar todo desde Drive
+    setSyncStatus('carg', 'Descargando desde Drive...');
+    let driveRecs = await api.load();
+
+    // 3. Detectar registros locales ausentes en Drive y subirlos en orden
+    const driveIds = new Set(driveRecs.map(r => String(r.id)));
+    const soloLocal = getLocal()
+      .filter(r => !driveIds.has(String(r.id)))
+      .sort((a, b) => (a.id || 0) - (b.id || 0));
+
+    for (let i = 0; i < soloLocal.length; i++) {
+      setSyncStatus('carg', `Sincronizando ${i + 1}/${soloLocal.length}...`);
+      await api.save(soloLocal[i]);
+    }
+
+    // 4. Bajar estado final consolidado
+    if (soloLocal.length > 0) {
+      setSyncStatus('carg', 'Verificando...');
+      driveRecs = await api.load();
+    }
+
+    // 5. Actualizar local con la versión de Drive (fuente única de verdad)
+    setLocal(driveRecs);
+    actualizarDash();
+    if (document.getElementById('vRecs') &&
+        !document.getElementById('vRecs').classList.contains('hidden')) {
+      renderRecs(driveRecs);
+    }
+    setSyncStatus('ok', `Drive: ${driveRecs.length} registro(s)`);
+
+  } catch (err) {
+    setSyncStatus('err', 'Error: ' + (err.message || String(err)));
+  } finally {
+    _syncing = false;
+  }
 }
 
 // ── Auth ──────────────────────────────────────────────────────
@@ -775,42 +860,44 @@ function limpiarFormCampos() {
 }
 
 // ── Guardar ───────────────────────────────────────────────────
-function guardar(e) {
+async function guardar(e) {
   e.preventDefault();
-  const fd=new FormData(document.getElementById('frmReg'));
-  const rec={};
-  for(const [k,v] of fd.entries()) rec[k]=v.trim();
-  rec.id=Date.now(); rec.timestampRegistro=new Date().toISOString();
+  const fd = new FormData(document.getElementById('frmReg'));
+  const rec = {};
+  for (const [k, v] of fd.entries()) rec[k] = v.trim();
+  rec.id = Date.now();
+  rec.timestampRegistro = new Date().toISOString();
 
-  // Guardar local
-  const local=getLocal(); local.push(rec); setLocal(local);
-  alerta('alForm', `✅ Guardado localmente. Sincronizando con Drive...`, 'ok');
-  window.scrollTo({top:0,behavior:'smooth'});
+  // Guardar local siempre primero
+  const local = getLocal(); local.push(rec); setLocal(local);
+  alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Guardar en Drive (o encolar si no hay conexión)
-  if (!navigator.onLine || typeof google === 'undefined' || !google.script) {
+  // Intentar subir a Drive o encolar
+  const tieneApi = api._gsOk() || api._url();
+  if (!navigator.onLine || !tieneApi) {
     encolarRegistro(rec);
     setSyncStatus('off', 'Sin conexión — guardado local ✓');
   } else {
     setSyncStatus('carg', 'Guardando en Drive...');
-    google.script.run
-      .withSuccessHandler(function(total) {
-        setSyncStatus('ok', 'Drive: '+total+' registro(s)');
-      })
-      .withFailureHandler(function() {
-        encolarRegistro(rec);
-        setSyncStatus('off', 'Sin conexión — guardado local ✓');
-      })
-      .saveRecord(JSON.stringify(rec));
+    try {
+      const total = await api.save(rec);
+      setSyncStatus('ok', 'Drive: ' + total + ' registro(s)');
+    } catch {
+      encolarRegistro(rec);
+      setSyncStatus('off', 'Pendiente de sincronización ✓');
+    }
   }
 
   // Reset form
   document.getElementById('frmReg').reset();
-  document.getElementById('fEdad').value='';
-  document.getElementById('fFechaReg').value=hoy();
-  document.getElementById('fRegPor').value=getSess()?.username||'';
-  document.getElementById('selMuni').innerHTML='<option value="">-- Seleccione departamento --</option>';
-  ['dSysAf','dTiComp','dSubAdq','dSubNac'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  document.getElementById('fEdad').value = '';
+  document.getElementById('fFechaReg').value = hoy();
+  document.getElementById('fRegPor').value = getSess()?.username || '';
+  document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
+  ['dSysAf', 'dTiComp', 'dSubAdq', 'dSubNac'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
 }
 
 // ── Tabla registros ───────────────────────────────────────────
@@ -851,23 +938,27 @@ function filtrar() {
   }));
 }
 
-function eliminar(id) {
+async function eliminar(id) {
   if (!confirm('¿Eliminar este registro permanentemente?')) return;
-  const nuevos=getLocal().filter(r=>r.id!==id);
+  const nuevos = getLocal().filter(r => r.id !== id);
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
-  setSyncStatus('carg','Eliminando en Drive...');
-  google.script.run
-    .withSuccessHandler(t=>setSyncStatus('ok','Drive: '+t+' registro(s)'))
-    .withFailureHandler(e=>setSyncStatus('err','Error Drive'))
-    .deleteRecord(id);
+  setSyncStatus('carg', 'Eliminando en Drive...');
+  try {
+    const t = await api.remove(id);
+    setSyncStatus('ok', 'Drive: ' + t + ' registro(s)');
+  } catch {
+    setSyncStatus('err', 'Error al eliminar en Drive');
+  }
 }
 
-function borrarTodo() {
+async function borrarTodo() {
   setLocal([]); renderRecs([]); actualizarDash();
-  google.script.run
-    .withSuccessHandler(()=>setSyncStatus('ok','Drive: 0 registros'))
-    .withFailureHandler(()=>setSyncStatus('err','Error Drive'))
-    .saveAllRecords('[]');
+  try {
+    await api.saveAll([]);
+    setSyncStatus('ok', 'Drive: 0 registros');
+  } catch {
+    setSyncStatus('err', 'Error al limpiar Drive');
+  }
 }
 
 // ── Modal detalle ─────────────────────────────────────────────
@@ -907,25 +998,24 @@ function expSingle(id) {
   descargar(JSON.stringify(r,null,2),`registro_${nom||r.id}_${hoy()}.json`,'application/json');
 }
 function importarJSON(e) {
-  const file=e.target.files[0]; if(!file) return;
-  const rd=new FileReader();
-  rd.onload=ev=>{
-    try{
-      const data=JSON.parse(ev.target.result);
-      const inc=data.registros||(Array.isArray(data)?data:[data]);
-      if(!inc.length) return alert('Sin registros válidos.');
-      const exist=getLocal(), ids=new Set(exist.map(r=>r.id));
-      const nuevos=inc.filter(r=>!ids.has(r.id));
-      const merged=[...exist,...nuevos];
+  const file = e.target.files[0]; if (!file) return;
+  const rd = new FileReader();
+  rd.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const inc  = data.registros || (Array.isArray(data) ? data : [data]);
+      if (!inc.length) return alert('Sin registros válidos.');
+      const exist = getLocal(), ids = new Set(exist.map(r => r.id));
+      const nuevos = inc.filter(r => !ids.has(r.id));
+      const merged = [...exist, ...nuevos];
       setLocal(merged);
-      setSyncStatus('carg','Subiendo a Drive...');
-      google.script.run
-        .withSuccessHandler(t=>{setSyncStatus('ok','Drive: '+t+' registro(s)');actualizarDash();})
-        .withFailureHandler(()=>setSyncStatus('err','Error al subir a Drive'))
-        .saveAllRecords(JSON.stringify(merged));
-      alert('Importados: '+nuevos.length+' nuevo(s). Duplicados ignorados: '+(inc.length-nuevos.length));
-    }catch{ alert('Archivo JSON inválido.'); }
-    e.target.value='';
+      setSyncStatus('carg', 'Subiendo a Drive...');
+      api.saveAll(merged)
+        .then(t => { setSyncStatus('ok', 'Drive: ' + t + ' registro(s)'); actualizarDash(); })
+        .catch(() => setSyncStatus('err', 'Error al subir a Drive'));
+      alert('Importados: ' + nuevos.length + ' nuevo(s). Duplicados ignorados: ' + (inc.length - nuevos.length));
+    } catch { alert('Archivo JSON inválido.'); }
+    e.target.value = '';
   };
   rd.readAsText(file);
 }
@@ -965,8 +1055,32 @@ function alerta(id,msg,tipo){
   if(tipo!=='err') setTimeout(()=>{el.innerHTML='';},5000);
 }
 
+// ── Configuración servidor ────────────────────────────────────
+function guardarConfigGasUrl() {
+  const url = (document.getElementById('cfgGasUrl').value || '').trim();
+  if (url && !url.startsWith('https://script.google.com/macros/')) {
+    alerta('alCfg', 'URL inválida. Debe comenzar con https://script.google.com/macros/', 'err');
+    return;
+  }
+  localStorage.setItem('dusa_gas_url', url);
+  alerta('alCfg', url ? 'URL guardada. Probando conexión...' : 'URL eliminada.', 'ok');
+  if (url) sincronizar();
+}
+
+async function probarConexionDrive() {
+  alerta('alCfg', 'Probando conexión...', 'inf');
+  try {
+    const recs = await api.load();
+    alerta('alCfg', `Conexión exitosa. ${recs.length} registro(s) en Drive.`, 'ok');
+  } catch (err) {
+    alerta('alCfg', 'Error: ' + (err.message || err), 'err');
+  }
+}
+
 // ── Panel de Administración ───────────────────────────────────
 function renderAdmin() {
+  const cfgInput = document.getElementById('cfgGasUrl');
+  if (cfgInput) cfgInput.value = localStorage.getItem('dusa_gas_url') || '';
   const users = getUsers();
   const cont  = document.getElementById('adminUserList');
   if (!users.length) { cont.innerHTML = '<p style="color:#aaa;text-align:center;padding:20px">Sin usuarios registrados.</p>'; return; }

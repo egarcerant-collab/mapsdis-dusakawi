@@ -1,55 +1,124 @@
 // ================================================================
-//  DUSAKAWI EPSI — Backend + Servidor HTML
-//  Google Apps Script
+//  DUSAKAWI EPSI — Backend Google Apps Script
 // ================================================================
-//  ARCHIVOS NECESARIOS EN EL PROYECTO:
-//  1. backend_dusakawi.gs  (este archivo)
-//  2. formulario.html      (el formulario HTML)
-//
 //  DESPLIEGUE:
-//  1. Crear proyecto en script.google.com
+//  1. script.google.com → nuevo proyecto
 //  2. Pegar este código en Código.gs
-//  3. Crear archivo HTML → Archivo > Nuevo > HTML → nombre: formulario
-//  4. Pegar el contenido de formulario.html
-//  5. Implementar > Nueva implementación
+//  3. Archivo > Nuevo > HTML → nombre: formulario → pegar formulario.html
+//  4. Implementar > Nueva implementación
 //     - Tipo: Aplicación web
 //     - Ejecutar como: Yo (heidyveira@dusakawiepsi.com)
 //     - Acceso: Cualquier persona, incluso anónima
-//  6. Copiar la URL → esa es la URL del formulario
+//  5. Copiar la URL del Web App → configurarla en Admin > Configuración del Servidor
 // ================================================================
 
 const FILE_NAME = 'dusakawi_registros_discapacidad.json';
 const FOLDER_ID = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
 
-// ── Sirve el formulario HTML ───────────────────────────────────
+// ── Sirve HTML o datos vía GET ─────────────────────────────────
 function doGet(e) {
+  const action = (e.parameter || {}).action;
+
+  if (action === 'load') {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(10000);
+    try {
+      return buildResponse({ ok: true, data: getRecords() });
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
   return HtmlService.createHtmlOutputFromFile('formulario')
     .setTitle('Dusakawi EPSI — Registro de Discapacidad')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-// ── Funciones llamadas desde el HTML via google.script.run ─────
+// ── API HTTP desde GitHub Pages u otros orígenes (POST text/plain) ──
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const body = JSON.parse(e.postData.contents);
+    let result;
 
+    if (body.action === 'save') {
+      result = saveRecordSafe(body.record);
+    } else if (body.action === 'delete') {
+      result = deleteRecordSafe(body.id);
+    } else if (body.action === 'saveAll') {
+      saveRecords(body.records);
+      result = body.records.length;
+    } else {
+      throw new Error('Acción desconocida: ' + body.action);
+    }
+
+    return buildResponse({ ok: true, data: result });
+  } catch (err) {
+    return buildResponse({ ok: false, error: err.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ── Funciones llamadas desde HTML vía google.script.run ────────
 function loadRecords() {
-  return JSON.stringify(getRecords());
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    return JSON.stringify(getRecords());
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function saveRecord(recordJson) {
-  const record  = JSON.parse(recordJson);
-  const records = getRecords();
-  records.push(record);
-  saveRecords(records);
-  return records.length;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return saveRecordSafe(JSON.parse(recordJson));
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function deleteRecord(id) {
-  const records = getRecords().filter(r => r.id !== Number(id));
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return deleteRecordSafe(id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveAllRecords(dataJson) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const records = JSON.parse(dataJson);
+    saveRecords(records);
+    return records.length;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ── Lógica de negocio con deduplicación por ID ─────────────────
+function saveRecordSafe(record) {
+  const records = getRecords();
+  const idx = records.findIndex(r => String(r.id) === String(record.id));
+  if (idx >= 0) {
+    records[idx] = record;
+  } else {
+    records.push(record);
+  }
   saveRecords(records);
   return records.length;
 }
 
-function saveAllRecords(dataJson) {
-  const records = JSON.parse(dataJson);
+function deleteRecordSafe(id) {
+  const records = getRecords().filter(r => String(r.id) !== String(id));
   saveRecords(records);
   return records.length;
 }
@@ -58,7 +127,7 @@ function saveAllRecords(dataJson) {
 function getFolder() {
   try {
     return DriveApp.getFolderById(FOLDER_ID);
-  } catch(e) {
+  } catch (e) {
     const name = 'Dusakawi EPSI - Registros';
     const iter = DriveApp.getFoldersByName(name);
     return iter.hasNext() ? iter.next() : DriveApp.createFolder(name);
@@ -86,4 +155,11 @@ function saveRecords(records) {
   } else {
     folder.createFile(FILE_NAME, content, MimeType.PLAIN_TEXT);
   }
+}
+
+// ── Respuesta HTTP JSON ────────────────────────────────────────
+function buildResponse(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }
