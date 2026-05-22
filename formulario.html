@@ -188,12 +188,7 @@ tr:hover td{background:#fafafa}
       <input type="password" id="lPass" placeholder="Contraseña"
              onkeypress="if(event.key==='Enter')doLogin()"></div>
     <button class="btn btn-r btn-full" onclick="doLogin()">Ingresar al Sistema</button>
-    <div style="background:#FFF8E1;border:1px solid #FFD700;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:0.78rem;color:#856404;text-align:left">
-      <strong>🔑 Primer acceso en este dispositivo:</strong><br>
-      Usuario: <code style="background:#fff;padding:2px 5px;border-radius:4px">egarcerant</code>
-      &nbsp; Contraseña: <code style="background:#fff;padding:2px 5px;border-radius:4px">Dusa2024*</code><br>
-      <span style="color:#999;font-size:0.73rem">Cámbiala desde Usuarios → 🔑 Clave después del primer ingreso.</span>
-    </div>
+
     <div class="tc mt8"><button class="link-btn" onclick="go('scrReg')">Registrar nuevo usuario</button></div>
   </div>
 </div>
@@ -779,31 +774,43 @@ const api = {
   },
   uploadCertificado(recordId, file, onProgress) {
     return new Promise((res, rej) => {
-      if (!this._url()) { rej(new Error('Sin URL de servidor')); return; }
       const reader = new FileReader();
       reader.onload = async ev => {
         try {
-          const b64       = ev.target.result.split(',')[1];
-          const uploadId  = 'up' + Date.now();
-          const payload   = JSON.stringify({
+          const b64 = ev.target.result.split(',')[1];
+          // ── GAS context: llamada directa, sin polling ──────────
+          if (this._gsOk()) {
+            if (onProgress) onProgress(1, 10);
+            google.script.run
+              .withSuccessHandler(url => { if (onProgress) onProgress(10, 10); res(url); })
+              .withFailureHandler(rej)
+              .uploadCertificadoGAS(String(recordId), file.name, b64, file.type);
+            return;
+          }
+          // ── GitHub Pages / Web: POST + polling optimizado ──────
+          if (!this._url()) { rej(new Error('Sin URL de servidor')); return; }
+          const uploadId = 'up' + Date.now();
+          const payload  = JSON.stringify({
             action: 'uploadCertificado', uploadId,
             recordId: String(recordId), fileName: file.name,
             base64Data: b64, mimeType: file.type
           });
-          // no-cors: el cuerpo SÍ llega a GAS pero no podemos leer la respuesta
           await fetch(this._url(), {
             method: 'POST', mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain' },
             body: payload
           });
-          // Polling: GAS guarda la URL en ScriptCache con el uploadId
-          for (let i = 1; i <= 15; i++) {
-            await new Promise(r => setTimeout(r, 3000));
-            if (onProgress) onProgress(i, 15);
+          if (onProgress) onProgress(1, 20);
+          // Espera inicial 5s: GAS necesita tiempo para arrancar y subir a Drive
+          await new Promise(r => setTimeout(r, 5000));
+          // Polling cada 2s — máximo 20 intentos (~40s adicionales)
+          for (let i = 2; i <= 20; i++) {
+            if (onProgress) onProgress(i, 20);
             try {
               const driveUrl = await this._get({ action: 'checkUpload', uploadId });
               if (driveUrl) { res(driveUrl); return; }
             } catch (_) {}
+            if (i < 20) await new Promise(r => setTimeout(r, 2000));
           }
           rej(new Error('Tiempo de espera agotado. Intente de nuevo con conexión estable.'));
         } catch (err) { rej(err); }

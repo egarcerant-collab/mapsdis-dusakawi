@@ -98,6 +98,11 @@ function doPost(e) {
   }
 }
 
+// ── Upload directo desde google.script.run (sin polling) ──────
+function uploadCertificadoGAS(recordId, fileName, base64Data, mimeType) {
+  return saveCertificado(recordId, fileName, base64Data, mimeType);
+}
+
 // ── Guardar certificado en subcarpeta Drive ────────────────────
 function saveCertificado(recordId, fileName, base64Data, mimeType) {
   const folder = getCertificadosFolder();
