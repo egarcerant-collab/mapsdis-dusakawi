@@ -923,7 +923,7 @@ function renderRecs(recs) {
       <td>${r.regimen||'-'}</td><td>${rehab}</td><td>${fReg}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
-        <button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>
+        ${getSess()?.superadmin ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
   }).join('');
   document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
@@ -941,6 +941,10 @@ function filtrar() {
 }
 
 async function eliminar(id) {
+  if (!getSess()?.superadmin) {
+    alert('Solo el Super Administrador puede eliminar registros.');
+    return;
+  }
   if (!confirm('¿Eliminar este registro permanentemente?')) return;
   const nuevos = getLocal().filter(r => r.id !== id);
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
@@ -954,6 +958,10 @@ async function eliminar(id) {
 }
 
 async function borrarTodo() {
+  if (!getSess()?.superadmin) {
+    alert('Solo el Super Administrador puede borrar todos los registros.');
+    return;
+  }
   setLocal([]); renderRecs([]); actualizarDash();
   try {
     await api.saveAll([]);
@@ -965,20 +973,68 @@ async function borrarTodo() {
 
 // ── Modal detalle ─────────────────────────────────────────────
 function verDetalle(id) {
-  const r=getLocal().find(x=>x.id===id); if(!r) return;
-  const nom=[r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ');
-  let html=`<h3 style="color:var(--pri);margin-bottom:13px">${nom||'Sin nombre'}</h3><div class="det-grid">`;
-  for(const [k,v] of Object.entries(r)){
-    if(k==='id'||!v||v==='') continue;
-    html+=`<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
+  const r = getLocal().find(x => x.id === id); if (!r) return;
+  const sess = getSess();
+  const nom = [r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ');
+  let html = `<h3 style="color:var(--pri);margin-bottom:13px">${nom||'Sin nombre'}</h3><div class="det-grid">`;
+  for (const [k,v] of Object.entries(r)) {
+    if (k==='id'||k==='nota'||k==='notaEditadaPor'||k==='notaEditadaEn'||!v||v==='') continue;
+    html += `<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
   }
-  html+=`</div><div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+  html += `</div>`;
+
+  // Sección de nota: editable solo para superadmin
+  const puedeEditar = sess?.superadmin;
+  const notaMeta = r.notaEditadaPor
+    ? `<div style="font-size:0.72rem;color:#999;margin-top:4px">Editada por @${r.notaEditadaPor} · ${(r.notaEditadaEn||'').split('T')[0]}</div>`
+    : '';
+  if (puedeEditar) {
+    html += `<div style="margin-top:14px;border-top:1px solid #eee;padding-top:12px">
+      <div style="font-weight:700;font-size:0.82rem;color:#444;margin-bottom:6px">📝 Nota de seguimiento</div>
+      <textarea id="notaInput" rows="3" style="width:100%;padding:8px;border:1.5px solid #DEE2E6;border-radius:6px;font-size:0.84rem;font-family:inherit">${r.nota||''}</textarea>
+      ${notaMeta}
+      <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+        <button class="btn btn-g btn-sm" onclick="guardarNota(${id})">💾 Guardar nota</button>
+        <span id="notaStatus" style="font-size:0.78rem;color:#27AE60"></span>
+      </div>
+    </div>`;
+  } else {
+    html += `<div style="margin-top:14px;border-top:1px solid #eee;padding-top:12px">
+      <div style="font-weight:700;font-size:0.82rem;color:#444;margin-bottom:6px">📝 Nota de seguimiento</div>
+      <div style="background:#f9f9f9;padding:10px;border-radius:6px;font-size:0.84rem;color:#555;min-height:36px">
+        ${r.nota ? r.nota.replace(/\n/g,'<br>') : '<span style="color:#bbb">Sin nota</span>'}
+      </div>
+      ${notaMeta}
+    </div>`;
+  }
+
+  html += `<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
     <button class="btn btn-b btn-sm" onclick="expSingle(${id})">⬇ Exportar</button>
     <button class="btn btn-sm btn-ol" onclick="cerrarModal()">Cerrar</button></div>`;
-  document.getElementById('modalCont').innerHTML=html;
+  document.getElementById('modalCont').innerHTML = html;
   document.getElementById('modalBg').classList.remove('hidden');
 }
-function cerrarModal(){ document.getElementById('modalBg').classList.add('hidden'); }
+
+async function guardarNota(id) {
+  const nota = document.getElementById('notaInput')?.value || '';
+  const local = getLocal();
+  const idx = local.findIndex(r => r.id === id);
+  if (idx === -1) return;
+  local[idx].nota = nota;
+  local[idx].notaEditadaPor = getSess()?.username;
+  local[idx].notaEditadaEn = new Date().toISOString();
+  setLocal(local);
+  const st = document.getElementById('notaStatus');
+  if (st) st.textContent = 'Guardando...';
+  try {
+    await api.save(local[idx]);
+    if (st) st.textContent = '✓ Guardado en Drive';
+  } catch {
+    if (st) st.textContent = '⚠ Guardado solo local';
+  }
+}
+
+function cerrarModal() { document.getElementById('modalBg').classList.add('hidden'); }
 
 // ── Export / Import ───────────────────────────────────────────
 function exportarJSON() {
