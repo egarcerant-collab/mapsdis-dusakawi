@@ -189,6 +189,12 @@ tr:hover td{background:#fafafa}
       <input type="password" id="lPass" placeholder="Contraseña"
              onkeypress="if(event.key==='Enter')doLogin()"></div>
     <button class="btn btn-r btn-full" onclick="doLogin()">Ingresar al Sistema</button>
+    <div style="background:#FFF8E1;border:1px solid #FFD700;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:0.78rem;color:#856404;text-align:left">
+      <strong>🔑 Primer acceso en este dispositivo:</strong><br>
+      Usuario: <code style="background:#fff;padding:2px 5px;border-radius:4px">egarcerant</code>
+      &nbsp; Contraseña: <code style="background:#fff;padding:2px 5px;border-radius:4px">Dusa2024*</code><br>
+      <span style="color:#999;font-size:0.73rem">Cámbiala desde Usuarios → 🔑 Clave después del primer ingreso.</span>
+    </div>
     <div class="tc mt8"><button class="link-btn" onclick="go('scrReg')">Registrar nuevo usuario</button></div>
   </div>
 </div>
@@ -999,6 +1005,10 @@ function iniciarApp(user) {
   go('scrApp');
   vista('dash');
   setTimeout(sincronizar, 500);
+  // Guardar usuario en Drive para que otros dispositivos puedan iniciar sesión
+  if (navigator.onLine && api._url()) {
+    setTimeout(() => api.saveUser(user).catch(() => {}), 3000);
+  }
 }
 
 // ── Navegación ────────────────────────────────────────────────
