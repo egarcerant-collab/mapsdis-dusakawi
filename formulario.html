@@ -1369,6 +1369,7 @@ function renderRecs(recs) {
       <td>${r.regimen||'-'}</td><td>${rehab}</td><td>${fReg}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
+        ${getSess()?.superadmin ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
         ${getSess()?.superadmin ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
   }).join('');
