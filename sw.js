@@ -1,9 +1,9 @@
 // ================================================================
 //  DUSAKAWI EPSI — Service Worker (PWA Offline)
-//  Versión: 1.0
+//  Versión: 3.0
 // ================================================================
 
-const CACHE = 'dusakawi-mapsdis-v1';
+const CACHE = 'dusakawi-mapsdis-v3';
 const ASSETS = [
   './formulario.html',
   './manifest.json',

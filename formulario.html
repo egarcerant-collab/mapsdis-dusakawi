@@ -714,7 +714,8 @@ function instalarPWA() {
 }
 
 // ── Capa API: soporta google.script.run y fetch() ─────────────
-const GAS_URL_DEFAULT = 'https://script.google.com/a/macros/dusakawiepsi.com/s/AKfycbzY-HYJEP2BAqhmnN_ROzfg_CSN5K7oLgz76PDY_FMdwrGWfxSBvQWP1OXSACu1Ni-uvg/exec';
+// URL estándar (sin /a/macros/dominio/) — funciona para acceso anónimo desde GitHub Pages
+const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzY-HYJEP2BAqhmnN_ROzfg_CSN5K7oLgz76PDY_FMdwrGWfxSBvQWP1OXSACu1Ni-uvg/exec';
 
 const api = {
   _gsOk() { return typeof google !== 'undefined' && google && google.script; },
