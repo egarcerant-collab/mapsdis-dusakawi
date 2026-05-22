@@ -531,6 +531,9 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="sh sh-dark">👥 Gestión de Usuarios Registrados</div>
       <div class="sb">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+          <button class="btn btn-b btn-sm" onclick="renderAdmin()">🔄 Sincronizar desde Drive</button>
+        </div>
         <div id="alAdmin"></div>
         <div id="adminUserList"></div>
       </div>
@@ -696,6 +699,18 @@ const api = {
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveAllRecords(JSON.stringify(records)));
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
     return this._get({ action: 'saveAll', records });
+  },
+  loadUsers() {
+    if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
+    return this._get({ action: 'loadUsers' });
+  },
+  saveUser(user) {
+    if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
+    return this._get({ action: 'saveUser', user });
+  },
+  removeUser(id) {
+    if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
+    return this._get({ action: 'deleteUser', id });
   },
   uploadCertificado(recordId, file) {
     return new Promise((res, rej) => {
@@ -864,24 +879,41 @@ async function sincronizar() {
 }
 
 // ── Auth ──────────────────────────────────────────────────────
-function doLogin() {
+async function doLogin() {
   const u = inp('lUser'), p = inp('lPass');
   if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
-  const user = getUsers().find(x => x.username === u && x.password === btoa(p));
+  let user = getUsers().find(x => x.username === u && x.password === btoa(p));
+  if (!user && navigator.onLine && api._url()) {
+    alerta('alLogin', '⏳ Verificando en servidor...', 'inf');
+    try {
+      const driveUsers = await api.loadUsers();
+      user = driveUsers.find(x => x.username === u && x.password === btoa(p));
+      if (user) {
+        const local = getUsers();
+        const idx = local.findIndex(x => String(x.id) === String(user.id));
+        if (idx >= 0) local[idx] = user; else local.push(user);
+        setUsers(local);
+      }
+    } catch (_) {}
+  }
   if (!user) return alerta('alLogin', 'Usuario o contraseña incorrectos.', 'err');
   setSess(user);
   iniciarApp(user);
 }
 
-function doRegister() {
+async function doRegister() {
   const name=inp('rName'), cargo=inp('rCargo'), u=inp('rUser'), p=inp('rPass'), p2=inp('rPass2');
   if (!name||!u||!p) return alerta('alReg','Complete los campos obligatorios.','err');
   if (p.length<6)    return alerta('alReg','Contraseña mínimo 6 caracteres.','err');
   if (p!==p2)        return alerta('alReg','Las contraseñas no coinciden.','err');
   const users = getUsers();
   if (users.find(x=>x.username===u)) return alerta('alReg','El usuario ya existe.','err');
-  users.push({id:Date.now(),name,cargo,username:u,password:btoa(p),createdAt:new Date().toISOString()});
+  const newUser = {id:Date.now(),name,cargo,username:u,password:btoa(p),createdAt:new Date().toISOString()};
+  users.push(newUser);
   setUsers(users);
+  if (navigator.onLine && api._url()) {
+    try { await api.saveUser(newUser); } catch(_) {}
+  }
   alerta('alReg','Cuenta creada. Redirigiendo...','ok');
   setTimeout(()=>go('scrLogin'), 1800);
 }
@@ -1301,15 +1333,31 @@ async function probarConexionDrive() {
 }
 
 // ── Panel de Administración ───────────────────────────────────
-function renderAdmin() {
+async function renderAdmin() {
   const cfgInput = document.getElementById('cfgGasUrl');
   if (cfgInput) cfgInput.value = localStorage.getItem('dusa_gas_url') || '';
-  const users = getUsers();
-  const cont  = document.getElementById('adminUserList');
+  const cont = document.getElementById('adminUserList');
+  cont.innerHTML = '<p style="color:#aaa;text-align:center;padding:16px">⏳ Sincronizando usuarios...</p>';
+
+  let users = getUsers();
+  if (navigator.onLine && api._url()) {
+    try {
+      const driveUsers = await api.loadUsers();
+      const driveIds = new Set(driveUsers.map(u => String(u.id)));
+      const soloLocal = users.filter(u => !driveIds.has(String(u.id)));
+      users = [...driveUsers, ...soloLocal];
+      setUsers(users);
+    } catch(_) {
+      alerta('alAdmin', '⚠ No se pudo sincronizar usuarios desde Drive (usando datos locales).', 'err');
+    }
+  }
+
   if (!users.length) { cont.innerHTML = '<p style="color:#aaa;text-align:center;padding:20px">Sin usuarios registrados.</p>'; return; }
   cont.innerHTML = users.map(u => {
-    const av   = (u.name||u.username).charAt(0).toUpperCase();
-    const suTag= u.superadmin ? '<span class="bdg bdg-y" style="background:#FEF9E7;color:#B07800">Super Admin</span>' : '<span class="bdg bdg-b">Usuario</span>';
+    const av    = (u.name||u.username).charAt(0).toUpperCase();
+    const suTag = u.superadmin
+      ? '<span class="bdg bdg-y" style="background:#FEF9E7;color:#B07800">Super Admin</span>'
+      : '<span class="bdg bdg-b">Usuario</span>';
     const creado = u.createdAt ? u.createdAt.split('T')[0] : '-';
     return `<div class="usr-card ${u.superadmin?'superadmin':''}">
       <div class="usr-av ${u.superadmin?'su':''}">${av}</div>
@@ -1356,7 +1404,7 @@ function abrirCambiarPass(id) {
   document.getElementById('modalUser').classList.remove('hidden');
 }
 
-function guardarCambiosUsuario() {
+async function guardarCambiosUsuario() {
   const id    = Number(document.getElementById('editUserId').value);
   const users = getUsers();
   const idx   = users.findIndex(u => u.id === id);
@@ -1370,27 +1418,36 @@ function guardarCambiosUsuario() {
     users[idx].cargo = cargo;
     setUsers(users);
     if (getSess()?.id === id) setSess({...getSess(), name, cargo});
+    if (navigator.onLine && api._url()) {
+      try { await api.saveUser(users[idx]); } catch(_) {}
+    }
     alerta('alEditUser', 'Usuario actualizado.', 'ok');
     setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 1200);
 
   } else {
     const p  = (document.getElementById('editPassNew').value  || '').trim();
     const p2 = (document.getElementById('editPassNew2').value || '').trim();
-    if (!p)        return alerta('alEditUser', 'Ingrese la nueva contraseña.', 'err');
+    if (!p)           return alerta('alEditUser', 'Ingrese la nueva contraseña.', 'err');
     if (p.length < 6) return alerta('alEditUser', 'Mínimo 6 caracteres.', 'err');
-    if (p !== p2)  return alerta('alEditUser', 'Las contraseñas no coinciden.', 'err');
+    if (p !== p2)     return alerta('alEditUser', 'Las contraseñas no coinciden.', 'err');
     users[idx].password = btoa(p);
     setUsers(users);
+    if (navigator.onLine && api._url()) {
+      try { await api.saveUser(users[idx]); } catch(_) {}
+    }
     alerta('alEditUser', 'Contraseña cambiada correctamente.', 'ok');
     setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 1200);
   }
 }
 
-function eliminarUsuario(id) {
+async function eliminarUsuario(id) {
   const u = getUsers().find(x => x.id === id);
   if (!u) return;
   if (!confirm('¿Eliminar al usuario @' + u.username + '? Esta acción no se puede deshacer.')) return;
   setUsers(getUsers().filter(x => x.id !== id));
+  if (navigator.onLine && api._url()) {
+    try { await api.removeUser(id); } catch(_) {}
+  }
   renderAdmin();
 }
 
@@ -1401,14 +1458,16 @@ function cerrarModalUser() {
 // ── Init ──────────────────────────────────────────────────────
 (function init(){
   const SU={id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
-    username:'egarcerant',password:btoa('123456'),superadmin:true,
+    username:'egarcerant',password:btoa('Dusa2024*'),superadmin:true,
     createdAt:'2024-01-01T00:00:00.000Z'};
   let users=getUsers();
   const idx=users.findIndex(u=>u.username==='egarcerant');
-  if(idx===-1) users.unshift(SU);
-  else users[idx]={...users[idx],...SU,password:btoa('123456')};
-  if(users.length<2) users.push({id:1,name:'Administrador',cargo:'Admin',
-    username:'admin',password:btoa('admin123'),createdAt:new Date().toISOString()});
+  if(idx===-1){
+    users.unshift(SU);
+  } else {
+    // Preservar contraseña y datos existentes; solo forzar superadmin:true
+    users[idx]={...SU, ...users[idx], superadmin:true};
+  }
   setUsers(users);
   const sess=getSess();
   if(sess){ iniciarApp(sess); } else { go('scrLogin'); }

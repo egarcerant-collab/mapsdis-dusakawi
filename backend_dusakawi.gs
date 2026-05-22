@@ -12,8 +12,9 @@
 //  5. Copiar la URL del Web App → configurarla en Admin > Configuración del Servidor
 // ================================================================
 
-const FILE_NAME = 'dusakawi_registros_discapacidad.json';
-const FOLDER_ID = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
+const FILE_NAME       = 'dusakawi_registros_discapacidad.json';
+const USERS_FILE_NAME = 'dusakawi_usuarios.json';
+const FOLDER_ID       = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
 
 // ── API unificada vía GET (evita problema de redirect con POST) ─
 function doGet(e) {
@@ -40,6 +41,13 @@ function doGet(e) {
       const records = JSON.parse(params.records);
       saveRecords(records);
       return buildResponse({ ok: true, data: records.length });
+    } else if (action === 'loadUsers') {
+      return buildResponse({ ok: true, data: getUsersFromDrive() });
+    } else if (action === 'saveUser') {
+      const user = JSON.parse(params.user);
+      return buildResponse({ ok: true, data: saveUserSafe(user) });
+    } else if (action === 'deleteUser') {
+      return buildResponse({ ok: true, data: deleteUserSafe(params.id) });
     } else {
       throw new Error('Acción desconocida: ' + action);
     }
@@ -199,6 +207,39 @@ function saveRecords(records) {
   } else {
     folder.createFile(FILE_NAME, content, MimeType.PLAIN_TEXT);
   }
+}
+
+// ── Gestión de Usuarios en Drive ──────────────────────────────
+function getUsersFromDrive() {
+  const folder = getFolder();
+  const iter   = folder.getFilesByName(USERS_FILE_NAME);
+  if (iter.hasNext()) {
+    const txt = iter.next().getBlob().getDataAsString('UTF-8');
+    return txt ? JSON.parse(txt) : [];
+  }
+  return [];
+}
+
+function saveUserSafe(user) {
+  const users = getUsersFromDrive();
+  const idx   = users.findIndex(u => String(u.id) === String(user.id));
+  if (idx >= 0) { users[idx] = user; } else { users.push(user); }
+  saveUsersFile(users);
+  return users.length;
+}
+
+function deleteUserSafe(id) {
+  const users = getUsersFromDrive().filter(u => String(u.id) !== String(id));
+  saveUsersFile(users);
+  return users.length;
+}
+
+function saveUsersFile(users) {
+  const folder  = getFolder();
+  const iter    = folder.getFilesByName(USERS_FILE_NAME);
+  const content = JSON.stringify(users, null, 2);
+  if (iter.hasNext()) { iter.next().setContent(content); }
+  else { folder.createFile(USERS_FILE_NAME, content, MimeType.PLAIN_TEXT); }
 }
 
 // ── Respuesta HTTP JSON ────────────────────────────────────────
