@@ -48,6 +48,9 @@ function doGet(e) {
       return buildResponse({ ok: true, data: saveUserSafe(user) });
     } else if (action === 'deleteUser') {
       return buildResponse({ ok: true, data: deleteUserSafe(params.id) });
+    } else if (action === 'checkUpload') {
+      const cached = CacheService.getScriptCache().get('dusa_cert_' + params.uploadId);
+      return buildResponse({ ok: true, data: cached || null });
     } else {
       throw new Error('Acción desconocida: ' + action);
     }
@@ -65,6 +68,9 @@ function doPost(e) {
 
     if (body.action === 'uploadCertificado') {
       const url = saveCertificado(body.recordId, body.fileName, body.base64Data, body.mimeType);
+      if (body.uploadId) {
+        CacheService.getScriptCache().put('dusa_cert_' + body.uploadId, url, 600);
+      }
       return buildResponse({ ok: true, data: url });
     }
 

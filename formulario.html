@@ -763,16 +763,36 @@ const api = {
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'deleteUser', id });
   },
-  uploadCertificado(recordId, file) {
+  uploadCertificado(recordId, file, onProgress) {
     return new Promise((res, rej) => {
+      if (!this._url()) { rej(new Error('Sin URL de servidor')); return; }
       const reader = new FileReader();
-      reader.onload = ev => {
-        const b64 = ev.target.result.split(',')[1];
-        const body = JSON.stringify({ action: 'uploadCertificado', recordId, fileName: file.name, base64Data: b64, mimeType: file.type });
-        const url = this._gsOk() ? '' : this._url();
-        if (!url && !this._gsOk()) { rej(new Error('Sin URL de servidor')); return; }
-        fetch(url || this._url(), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body })
-          .then(r => r.json()).then(d => { if (!d.ok) throw new Error(d.error); res(d.data); }).catch(rej);
+      reader.onload = async ev => {
+        try {
+          const b64       = ev.target.result.split(',')[1];
+          const uploadId  = 'up' + Date.now();
+          const payload   = JSON.stringify({
+            action: 'uploadCertificado', uploadId,
+            recordId: String(recordId), fileName: file.name,
+            base64Data: b64, mimeType: file.type
+          });
+          // no-cors: el cuerpo SÍ llega a GAS pero no podemos leer la respuesta
+          await fetch(this._url(), {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: payload
+          });
+          // Polling: GAS guarda la URL en ScriptCache con el uploadId
+          for (let i = 1; i <= 15; i++) {
+            await new Promise(r => setTimeout(r, 3000));
+            if (onProgress) onProgress(i, 15);
+            try {
+              const driveUrl = await this._get({ action: 'checkUpload', uploadId });
+              if (driveUrl) { res(driveUrl); return; }
+            } catch (_) {}
+          }
+          rej(new Error('Tiempo de espera agotado. Intente de nuevo con conexión estable.'));
+        } catch (err) { rej(err); }
       };
       reader.onerror = rej;
       reader.readAsDataURL(file);
@@ -1259,10 +1279,11 @@ async function guardar(e) {
     // Certificado: mantener URL existente si no se subió uno nuevo
     const fileInput = document.getElementById('fileCertificado');
     if (fileInput?.files[0]) {
-      alerta('alForm', '⏳ Subiendo certificado a Drive...', 'inf');
+      alerta('alForm', '⏳ Enviando certificado a Drive (puede tomar 15–30 s)...', 'inf');
       try {
-        rec.certificadoUrl = await api.uploadCertificado(rec.id, fileInput.files[0]);
-      } catch { alerta('alForm', '⚠ No se pudo subir el certificado.', 'err'); }
+        rec.certificadoUrl = await api.uploadCertificado(rec.id, fileInput.files[0],
+          (i, t) => alerta('alForm', `⏳ Verificando subida... ${i}/${t}`, 'inf'));
+      } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
     } else if (original?.certificadoUrl) {
       rec.certificadoUrl = original.certificadoUrl;
     }
@@ -1288,12 +1309,13 @@ async function guardar(e) {
     rec.timestampRegistro = new Date().toISOString();
     const fileInput = document.getElementById('fileCertificado');
     if (fileInput?.files[0]) {
-      alerta('alForm', '⏳ Subiendo certificado a Drive...', 'inf');
+      alerta('alForm', '⏳ Enviando certificado a Drive (puede tomar 15–30 s)...', 'inf');
       try {
-        const certUrl = await api.uploadCertificado(rec.id, fileInput.files[0]);
+        const certUrl = await api.uploadCertificado(rec.id, fileInput.files[0],
+          (i, t) => alerta('alForm', `⏳ Verificando subida... ${i}/${t}`, 'inf'));
         rec.certificadoUrl = certUrl;
         document.getElementById('certificadoUrl').value = certUrl;
-      } catch { alerta('alForm', '⚠ No se pudo subir el certificado. Se guardará sin el archivo.', 'err'); }
+      } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
     }
     const local = getLocal(); local.push(rec); setLocal(local);
     alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
