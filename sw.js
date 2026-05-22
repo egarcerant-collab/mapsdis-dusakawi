@@ -3,7 +3,7 @@
 //  Versión: 3.0
 // ================================================================
 
-const CACHE = 'dusakawi-mapsdis-v3';
+const CACHE = 'dusakawi-mapsdis-v4';
 const ASSETS = [
   './formulario.html',
   './manifest.json',
