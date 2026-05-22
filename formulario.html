@@ -969,13 +969,19 @@ async function sincronizar() {
 async function doLogin() {
   const u = inp('lUser'), p = inp('lPass');
   if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
-  let user = getUsers().find(x => x.username === u && x.password === btoa(p));
+  const _match = (stored, plain) => stored === btoa(plain) || stored === plain;
+  let user = getUsers().find(x => x.username === u && _match(x.password, p));
   if (!user && (navigator.onLine || api._gsOk())) {
     alerta('alLogin', '⏳ Verificando en servidor...', 'inf');
     try {
       const driveUsers = await api.loadUsers();
-      user = driveUsers.find(x => x.username === u && x.password === btoa(p));
+      user = driveUsers.find(x => x.username === u && _match(x.password, p));
       if (user) {
+        // Migrar contraseña a Base64 si estaba en texto plano
+        if (user.password !== btoa(p)) {
+          user = { ...user, password: btoa(p) };
+          api.saveUser(user).catch(() => {});  // actualizar en Drive
+        }
         const local = getUsers();
         const idx = local.findIndex(x => String(x.id) === String(user.id));
         if (idx >= 0) local[idx] = user; else local.push(user);
