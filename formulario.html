@@ -148,13 +148,28 @@ tr:hover td{background:#fafafa}
 .w-auto{width:auto!important}
 .sb-bar{display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap}
 .sb-bar input{flex:1;min-width:200px}
+/* Gráficas dashboard */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px}
+.chart-row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.chart-lbl{min-width:110px;max-width:110px;font-size:0.73rem;color:#555;text-align:right;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;line-height:1.2}
+.chart-track{flex:1;background:#F0F0F0;border-radius:6px;height:22px;position:relative;
+  overflow:hidden;min-width:0}
+.chart-fill{height:100%;border-radius:6px;transition:width 0.7s ease}
+.chart-cnt{position:absolute;right:7px;top:50%;transform:translateY(-50%);
+  font-size:0.71rem;font-weight:800;color:#333;pointer-events:none}
+.chart-empty{color:#bbb;font-size:0.82rem;text-align:center;padding:14px}
+.stats6{display:grid;grid-template-columns:repeat(6,1fr);gap:13px;margin-bottom:20px}
 @media(max-width:768px){
   .g2,.g3,.g4{grid-template-columns:1fr}
   .s2,.s3,.s4{grid-column:span 1}
-  .stats{grid-template-columns:1fr 1fr}
+  .stats6{grid-template-columns:repeat(3,1fr)}
+  .charts-grid{grid-template-columns:1fr}
+  .chart-lbl{min-width:85px;max-width:85px}
   .main{padding:11px}
   .det-grid{grid-template-columns:1fr}
 }
+@media(max-width:480px){.stats6{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -231,12 +246,34 @@ tr:hover td{background:#fafafa}
 
   <!-- DASHBOARD -->
   <div id="vDash" class="main">
-    <div class="stats">
+    <div class="stats6">
       <div class="stat"><div class="stat-n" id="sTotal">0</div><div class="stat-l">Total Registros</div></div>
       <div class="stat g"><div class="stat-n" id="sHoy">0</div><div class="stat-l">Registros Hoy</div></div>
       <div class="stat b"><div class="stat-n" id="sMes">0</div><div class="stat-l">Este Mes</div></div>
       <div class="stat y"><div class="stat-n" id="sRehab">0</div><div class="stat-l">En Rehabilitación</div></div>
+      <div class="stat" style="border-left-color:#8E44AD"><div class="stat-n" id="sCert">0</div><div class="stat-l">Con Certificado</div></div>
+      <div class="stat" style="border-left-color:#E74C3C"><div class="stat-n" id="sVict">0</div><div class="stat-l">Víctimas Conflicto</div></div>
     </div>
+
+    <div class="charts-grid">
+      <div class="card">
+        <div class="sh sh-red">🦽 Tipo de Discapacidad</div>
+        <div class="sb" id="chartDisc"><div class="chart-empty">Cargando...</div></div>
+      </div>
+      <div class="card">
+        <div class="sh sh-blue">📍 Top Municipios</div>
+        <div class="sb" id="chartMuni"><div class="chart-empty">Cargando...</div></div>
+      </div>
+      <div class="card">
+        <div class="sh sh-green">⚧ Por Sexo</div>
+        <div class="sb" id="chartSexo"><div class="chart-empty">Cargando...</div></div>
+      </div>
+      <div class="card">
+        <div class="sh" style="background:linear-gradient(135deg,#6C3483,#9B59B6);color:#fff">👶 Grupo Etario</div>
+        <div class="sb" id="chartEdad"><div class="chart-empty">Cargando...</div></div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="sh sh-red">📋 Últimos 5 Registros</div>
       <div class="sb"><div class="tw"><table>
@@ -1476,23 +1513,102 @@ function descargar(content,filename,type){
 }
 
 // ── Dashboard ─────────────────────────────────────────────────
+const COLORES_DISC = {
+  'Física':              '#2980B9',
+  'Visual':              '#8E44AD',
+  'Auditiva':            '#16A085',
+  'Intelectual':         '#E67E22',
+  'Psicosocial (mental)':'#27AE60',
+  'Múltiple':            '#E74C3C',
+  'Sordoceguera':        '#2C3E50',
+  'Otra':                '#7F8C8D'
+};
+const COLORES_SEXO  = ['#2980B9','#C0392B','#F39C12','#7F8C8D'];
+const COLORES_EDAD  = ['#1ABC9C','#3498DB','#9B59B6','#E67E22','#E74C3C','#95A5A6'];
+const COLOR_MUNI    = '#1E8449';
+
+function contarPor(recs, campo) {
+  const m = {};
+  recs.forEach(r => {
+    const v = (r[campo] || '').trim() || 'No especificado';
+    m[v] = (m[v] || 0) + 1;
+  });
+  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+}
+
+function grupoEtario(edad) {
+  const e = parseInt(edad, 10);
+  if (isNaN(e)) return 'No especificado';
+  if (e < 6)   return '0 – 5 años';
+  if (e < 18)  return '6 – 17 años';
+  if (e < 30)  return '18 – 29 años';
+  if (e < 45)  return '30 – 44 años';
+  if (e < 60)  return '45 – 59 años';
+  return '60+ años';
+}
+
+function renderBarChart(containerId, data, getColor, maxItems) {
+  const el = document.getElementById(containerId); if (!el) return;
+  const top = data.slice(0, maxItems || 8);
+  if (!top.length) { el.innerHTML = '<div class="chart-empty">Sin datos suficientes</div>'; return; }
+  const max = top[0][1] || 1;
+  el.innerHTML = top.map(([lbl, cnt], i) => {
+    const pct   = Math.max(4, Math.round((cnt / max) * 100));
+    const color = typeof getColor === 'function' ? getColor(lbl, i) : getColor;
+    return `<div class="chart-row">
+      <div class="chart-lbl" title="${lbl}">${lbl}</div>
+      <div class="chart-track">
+        <div class="chart-fill" style="width:${pct}%;background:${color}"></div>
+        <span class="chart-cnt">${cnt}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function actualizarDash() {
-  const recs=getLocal(), h=hoy(), m=h.substring(0,7);
-  document.getElementById('sTotal').textContent=recs.length;
-  document.getElementById('sHoy').textContent=recs.filter(r=>(r.fechaRegistro||r.timestampRegistro||'').startsWith(h)).length;
-  document.getElementById('sMes').textContent=recs.filter(r=>(r.fechaRegistro||r.timestampRegistro||'').startsWith(m)).length;
-  document.getElementById('sRehab').textContent=recs.filter(r=>r.asistiendoRehab==='SI').length;
-  const tbody=document.getElementById('dtBody');
-  const ult=[...recs].reverse().slice(0,5);
-  tbody.innerHTML=ult.length?ult.map(r=>{
-    const nom=[r.primerNombre,r.primerApellido].filter(Boolean).join(' ')||'-';
-    const f=r.fechaRegistro||(r.timestampRegistro||'').split('T')[0]||'-';
+  const recs = getLocal(), h = hoy(), m = h.substring(0, 7);
+
+  // ── Estadísticas ─────────────────────────────────────────────
+  document.getElementById('sTotal').textContent = recs.length;
+  document.getElementById('sHoy').textContent   = recs.filter(r => (r.fechaRegistro || r.timestampRegistro || '').startsWith(h)).length;
+  document.getElementById('sMes').textContent   = recs.filter(r => (r.fechaRegistro || r.timestampRegistro || '').startsWith(m)).length;
+  document.getElementById('sRehab').textContent = recs.filter(r => r.asistiendoRehab === 'SI').length;
+  document.getElementById('sCert').textContent  = recs.filter(r => r.certificadoDisc === 'Sí').length;
+  document.getElementById('sVict').textContent  = recs.filter(r => (r.victimaConflicto || '').toUpperCase().startsWith('S')).length;
+
+  // ── Gráfica: Tipo de Discapacidad ─────────────────────────────
+  renderBarChart('chartDisc', contarPor(recs, 'tipoDiscapacidad'),
+    (lbl) => COLORES_DISC[lbl] || '#95A5A6');
+
+  // ── Gráfica: Top Municipios ───────────────────────────────────
+  renderBarChart('chartMuni', contarPor(recs, 'municipio'),
+    () => COLOR_MUNI, 8);
+
+  // ── Gráfica: Sexo ─────────────────────────────────────────────
+  renderBarChart('chartSexo', contarPor(recs, 'sexo'),
+    (_, i) => COLORES_SEXO[i] || '#95A5A6', 6);
+
+  // ── Gráfica: Grupo Etario ─────────────────────────────────────
+  const edadData = contarPor(recs.map(r => ({ ...r, _ge: grupoEtario(r.edad) })), '_ge');
+  const ORDEN_EDAD = ['0 – 5 años','6 – 17 años','18 – 29 años','30 – 44 años','45 – 59 años','60+ años'];
+  const edadOrdenada = ORDEN_EDAD
+    .map(g => [g, (edadData.find(([k]) => k === g) || [g, 0])[1]])
+    .filter(([, n]) => n > 0);
+  renderBarChart('chartEdad', edadOrdenada,
+    (_, i) => COLORES_EDAD[i] || '#95A5A6');
+
+  // ── Últimos 5 registros ───────────────────────────────────────
+  const tbody = document.getElementById('dtBody');
+  const ult   = [...recs].reverse().slice(0, 5);
+  tbody.innerHTML = ult.length ? ult.map(r => {
+    const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || '-';
+    const f   = r.fechaRegistro || (r.timestampRegistro || '').split('T')[0] || '-';
     return `<tr>
       <td><span class="bdg bdg-b">${r.tipoId||''}</span> ${r.identificacion||'-'}</td>
       <td>${nom}</td><td>${r.departamento||''} / ${r.municipio||'-'}</td>
       <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
       <td>${r.regimen||'-'}</td><td>${f}</td></tr>`;
-  }).join(''):'<tr><td colspan="6" style="text-align:center;padding:18px;color:#aaa">Sin registros aún</td></tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;padding:18px;color:#aaa">Sin registros aún</td></tr>';
 }
 
 // ── Utilidades ────────────────────────────────────────────────
