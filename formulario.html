@@ -355,10 +355,31 @@ tr:hover td{background:#fafafa}
 
       <div class="card"><div class="sh sh-red">♿ 6. Datos de Discapacidad</div><div class="sb"><div class="g3">
         <div class="fg"><label>Tipo de Discapacidad <span class="req">*</span></label>
-          <select name="tipoDiscapacidad" required><option value="">-- Seleccione --</option>
+          <select name="tipoDiscapacidad" required onchange="togMultiple(this)">
+            <option value="">-- Seleccione --</option>
             <option>Física</option><option>Visual</option><option>Auditiva</option>
             <option>Intelectual</option><option>Psicosocial (mental)</option>
-            <option>Sordoceguera</option><option>Múltiple</option></select></div>
+            <option>Sordoceguera</option><option>Múltiple</option>
+          </select></div>
+        <div class="fg s3" id="dMultiple" style="display:none">
+          <label>Seleccione las discapacidades que aplican <span class="req">*</span></label>
+          <div style="display:flex;flex-wrap:wrap;gap:10px 24px;padding:10px;background:#f8f9fa;border-radius:7px;border:1.5px solid #DEE2E6">
+            <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" value="Física" onchange="actualizarMultiple()"> Física</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" value="Visual" onchange="actualizarMultiple()"> Visual</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" value="Auditiva" onchange="actualizarMultiple()"> Auditiva</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" value="Intelectual" onchange="actualizarMultiple()"> Intelectual</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" value="Psicosocial (mental)" onchange="actualizarMultiple()"> Psicosocial (mental)</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" value="Sordoceguera" onchange="actualizarMultiple()"> Sordoceguera</label>
+          </div>
+          <input type="hidden" name="discapacidadesMultiple" id="discapacidadesMultiple">
+          <div id="resumenMultiple" style="font-size:0.78rem;color:#1B6B2A;margin-top:5px;font-weight:600"></div>
+        </div>
         <div class="fg"><label>Certificado de Discapacidad</label>
           <select name="certificadoDisc"><option value="">-- Seleccione --</option>
             <option>Sí</option><option>No</option><option>En Trámite</option></select></div>
@@ -699,7 +720,7 @@ const LABELS = {
   victimaConflicto:'Víctima Conflicto', departamento:'Departamento',
   municipio:'Municipio', zona:'Zona', fechaAfiliacion:'Fecha Afiliación',
   estadoActual:'Estado Actual', regimen:'Régimen', cohorteRiesgo:'Cohorte Riesgo',
-  tipoDiscapacidad:'Tipo Discapacidad', certificadoDisc:'Certificado Disc.',
+  tipoDiscapacidad:'Tipo Discapacidad', discapacidadesMultiple:'Discapacidades (Múltiple)', certificadoDisc:'Certificado Disc.',
   captacion:'Captación', enRehabilitacion:'En Rehabilitación',
   asistiendoRehab:'Asiste Rehab.', vecesRehab:'Nº Veces Rehab.',
   complicaciones:'Complicaciones', sistemaAfectado:'Sistema Afectado',
@@ -862,6 +883,20 @@ function calcEdad(el) {
   if(h.getMonth()<n.getMonth()||(h.getMonth()===n.getMonth()&&h.getDate()<n.getDate()))e--;
   document.getElementById('fEdad').value = e>=0?e:0;
 }
+function togMultiple(sel) {
+  const esMultiple = sel.value === 'Múltiple';
+  document.getElementById('dMultiple').style.display = esMultiple ? '' : 'none';
+  if (!esMultiple) {
+    document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(c => c.checked = false);
+    document.getElementById('discapacidadesMultiple').value = '';
+    document.getElementById('resumenMultiple').textContent = '';
+  }
+}
+function actualizarMultiple() {
+  const sel = [...document.querySelectorAll('#dMultiple input[type="checkbox"]:checked')].map(c => c.value);
+  document.getElementById('discapacidadesMultiple').value = sel.join(', ');
+  document.getElementById('resumenMultiple').textContent = sel.length ? 'Seleccionadas: ' + sel.join(' · ') : '';
+}
 function togEtnia(sel) {
   const esIndigena = sel.value === 'Indígena';
   document.getElementById('dPuebloIndigena').style.display = esIndigena ? '' : 'none';
@@ -887,7 +922,10 @@ function limpiarFormCampos() {
   document.getElementById('fFechaReg').value = hoy();
   document.getElementById('fRegPor').value   = getSess()?.username||'';
   document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
-  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena','dMultiple'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(c=>c.checked=false);
+  document.getElementById('discapacidadesMultiple').value='';
+  document.getElementById('resumenMultiple').textContent='';
   document.getElementById('alForm').innerHTML = '';
 }
 
