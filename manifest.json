@@ -1,0 +1,29 @@
+{
+  "name": "Dusakawi EPSI — Registro de Discapacidad",
+  "short_name": "MAPSDIS",
+  "description": "Sistema de Registro de Personas con Discapacidad — Asociación de Cabildos Indígenas del Cesar y La Guajira",
+  "start_url": "./formulario.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1B6B2A",
+  "theme_color": "#1B6B2A",
+  "orientation": "portrait-primary",
+  "lang": "es-CO",
+  "categories": ["medical", "health"],
+  "icons": [
+    {
+      "src": "logo_dusakawi.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "logo_dusakawi.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
+}

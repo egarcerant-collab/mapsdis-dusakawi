@@ -2,7 +2,16 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1B6B2A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MAPSDIS">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="MAPSDIS Dusakawi">
+<meta name="description" content="Sistema de Registro de Personas con Discapacidad — Dusakawi EPSI">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="logo_dusakawi.png">
 <title>Dusakawi EPSI — Registro de Discapacidad</title>
 <style>
 :root{
@@ -114,6 +123,24 @@ tr:hover td{background:#fafafa}
 .usr-acts{display:flex;gap:6px;flex-shrink:0}
 .modal-bg2{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;
   display:flex;align-items:center;justify-content:center;padding:20px}
+/* PWA */
+.offline-bar{position:fixed;top:0;left:0;right:0;z-index:2000;
+  background:#E74C3C;color:#fff;text-align:center;font-size:0.82rem;
+  padding:7px 14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.install-banner{position:fixed;bottom:0;left:0;right:0;z-index:1999;
+  background:linear-gradient(135deg,var(--pri-dark),var(--pri));color:#fff;
+  padding:12px 18px;display:flex;align-items:center;gap:12px;
+  box-shadow:0 -4px 20px rgba(0,0,0,.3)}
+.install-banner img{height:38px;border-radius:8px}
+.install-banner-txt{flex:1;font-size:0.82rem;line-height:1.4}
+.install-banner-txt strong{display:block;font-size:0.92rem}
+.pending-dot{display:inline-block;background:#E8A000;color:#fff;border-radius:50%;
+  width:20px;height:20px;font-size:0.65rem;font-weight:800;line-height:20px;
+  text-align:center;margin-left:4px;vertical-align:middle}
+@media(max-width:768px){
+  .hdr-txt p{display:none}
+  .nb{padding:5px 9px;font-size:0.75rem}
+}
 .tc{text-align:center}.mt8{margin-top:8px}
 .link-btn{background:none;border:none;color:var(--blue);cursor:pointer;
   text-decoration:underline;font-size:0.82rem;padding:0}
@@ -439,6 +466,24 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<!-- BARRA SIN CONEXIÓN -->
+<div id="offlineBar" class="offline-bar hidden">
+  📵 Sin conexión — los datos se guardan localmente y se sincronizarán cuando vuelva el internet
+</div>
+
+<!-- BANNER INSTALAR APP -->
+<div id="installBanner" class="install-banner hidden">
+  <img src="logo_dusakawi.png" alt="Dusakawi">
+  <div class="install-banner-txt">
+    <strong>📲 Instalar MAPSDIS como App</strong>
+    Funciona sin internet · Se instala en tu celular
+  </div>
+  <button class="btn btn-sm" style="background:#fff;color:var(--pri);white-space:nowrap"
+          id="btnInstall" onclick="instalarPWA()">Instalar</button>
+  <button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff"
+          onclick="document.getElementById('installBanner').classList.add('hidden')">✕</button>
+</div>
+
 <!-- MODAL EDITAR USUARIO -->
 <div id="modalUser" class="modal-bg2 hidden" onclick="if(event.target===this)cerrarModalUser()">
   <div class="modal-box" style="max-width:420px">
@@ -481,6 +526,87 @@ tr:hover td{background:#fafafa}
 </div>
 
 <script>
+// ── PWA: Service Worker ───────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              nw.postMessage('skipWaiting');
+            }
+          });
+        });
+      }).catch(() => {});
+  });
+}
+
+// ── PWA: Install prompt ───────────────────────────────────────
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  document.getElementById('installBanner').classList.remove('hidden');
+});
+window.addEventListener('appinstalled', () => {
+  document.getElementById('installBanner').classList.add('hidden');
+  _deferredPrompt = null;
+});
+function instalarPWA() {
+  if (!_deferredPrompt) return;
+  _deferredPrompt.prompt();
+  _deferredPrompt.userChoice.then(() => {
+    _deferredPrompt = null;
+    document.getElementById('installBanner').classList.add('hidden');
+  });
+}
+
+// ── PWA: Online / Offline ─────────────────────────────────────
+function actualizarEstadoConexion() {
+  const offline = !navigator.onLine;
+  const bar = document.getElementById('offlineBar');
+  if (bar) bar.classList.toggle('hidden', !offline);
+  document.body.style.paddingTop = offline ? '38px' : '';
+  if (!offline) procesarColaPendiente();
+}
+window.addEventListener('online',  actualizarEstadoConexion);
+window.addEventListener('offline', actualizarEstadoConexion);
+
+// ── Cola de sincronización offline ────────────────────────────
+const K_QUEUE = 'dusa_queue';
+const getQueue  = () => JSON.parse(localStorage.getItem(K_QUEUE) || '[]');
+const setQueue  = q  => localStorage.setItem(K_QUEUE, JSON.stringify(q));
+
+function encolarRegistro(rec) {
+  const q = getQueue(); q.push(rec); setQueue(q);
+  actualizarBadgePendiente();
+}
+
+function actualizarBadgePendiente() {
+  const n = getQueue().length;
+  const badge = document.getElementById('syncBadge');
+  if (!badge) return;
+  if (n > 0) badge.innerHTML +=
+    ` <span class="pending-dot" title="${n} pendiente(s)">${n}</span>`;
+}
+
+function procesarColaPendiente() {
+  if (typeof google === 'undefined' || !google.script) return;
+  const q = getQueue(); if (!q.length) return;
+  setSyncStatus('carg', 'Sincronizando '+q.length+' pendiente(s)...');
+  const rec = q[0];
+  google.script.run
+    .withSuccessHandler(function(total) {
+      const nq = getQueue(); nq.shift(); setQueue(nq);
+      setSyncStatus('ok', 'Drive: '+total+' registro(s)');
+      if (getQueue().length > 0) setTimeout(procesarColaPendiente, 800);
+    })
+    .withFailureHandler(function() {})
+    .saveRecord(JSON.stringify(rec));
+}
+
 const K = { users:'dusa_users', recs:'dusa_recs', sess:'dusa_sess' };
 const MUNIS = {
   Cesar:['Aguachica','Agustín Codazzi','Astrea','Becerril','Bosconia','Chimichagua',
@@ -661,16 +787,22 @@ function guardar(e) {
   alerta('alForm', `✅ Guardado localmente. Sincronizando con Drive...`, 'ok');
   window.scrollTo({top:0,behavior:'smooth'});
 
-  // Guardar en Drive
-  setSyncStatus('carg', 'Guardando en Drive...');
-  google.script.run
-    .withSuccessHandler(function(total) {
-      setSyncStatus('ok', 'Drive: '+total+' registro(s)');
-    })
-    .withFailureHandler(function(err) {
-      setSyncStatus('err', 'Local ✓ — Drive: '+err.message);
-    })
-    .saveRecord(JSON.stringify(rec));
+  // Guardar en Drive (o encolar si no hay conexión)
+  if (!navigator.onLine || typeof google === 'undefined' || !google.script) {
+    encolarRegistro(rec);
+    setSyncStatus('off', 'Sin conexión — guardado local ✓');
+  } else {
+    setSyncStatus('carg', 'Guardando en Drive...');
+    google.script.run
+      .withSuccessHandler(function(total) {
+        setSyncStatus('ok', 'Drive: '+total+' registro(s)');
+      })
+      .withFailureHandler(function() {
+        encolarRegistro(rec);
+        setSyncStatus('off', 'Sin conexión — guardado local ✓');
+      })
+      .saveRecord(JSON.stringify(rec));
+  }
 
   // Reset form
   document.getElementById('frmReg').reset();
@@ -943,6 +1075,7 @@ function cerrarModalUser() {
   setUsers(users);
   const sess=getSess();
   if(sess){ iniciarApp(sess); } else { go('scrLogin'); }
+  actualizarEstadoConexion();
 })();
 </script>
 </body>
