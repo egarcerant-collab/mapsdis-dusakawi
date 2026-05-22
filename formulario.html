@@ -532,7 +532,8 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="sh sh-dark">👥 Gestión de Usuarios Registrados</div>
       <div class="sb">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-r btn-sm" onclick="abrirCrearUsuario()">➕ Crear Usuario</button>
           <button class="btn btn-b btn-sm" onclick="renderAdmin()">🔄 Sincronizar desde Drive</button>
         </div>
         <div id="alAdmin"></div>
@@ -601,6 +602,18 @@ tr:hover td{background:#fafafa}
           <input type="password" id="editPassNew" placeholder="Mínimo 6 caracteres"></div>
         <div class="fg"><label>Confirmar Contraseña <span class="req">*</span></label>
           <input type="password" id="editPassNew2" placeholder="Repita la contraseña"></div>
+      </div>
+      <div id="createUserFields" class="hidden">
+        <div class="fg"><label>Nombre Completo <span class="req">*</span></label>
+          <input type="text" id="newUserName" placeholder="Nombre completo"></div>
+        <div class="fg"><label>Cargo / Rol</label>
+          <input type="text" id="newUserCargo" placeholder="Cargo o rol en la organización"></div>
+        <div class="fg"><label>Usuario <span class="req">*</span></label>
+          <input type="text" id="newUserUsername" placeholder="Nombre de usuario (sin espacios)"></div>
+        <div class="fg"><label>Contraseña <span class="req">*</span></label>
+          <input type="password" id="newUserPass" placeholder="Mínimo 6 caracteres"></div>
+        <div class="fg"><label>Confirmar Contraseña <span class="req">*</span></label>
+          <input type="password" id="newUserPass2" placeholder="Repita la contraseña"></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
         <button class="btn btn-ol btn-sm w-auto" onclick="cerrarModalUser()">Cancelar</button>
@@ -1558,6 +1571,21 @@ async function renderAdmin() {
 
 let _modoModal = 'edit';
 
+function abrirCrearUsuario() {
+  _modoModal = 'create';
+  document.getElementById('modalUserTitle').textContent = '➕ Crear Nuevo Usuario';
+  document.getElementById('editUserFields').classList.add('hidden');
+  document.getElementById('editPassFields').classList.add('hidden');
+  document.getElementById('createUserFields').classList.remove('hidden');
+  document.getElementById('newUserName').value     = '';
+  document.getElementById('newUserCargo').value    = '';
+  document.getElementById('newUserUsername').value = '';
+  document.getElementById('newUserPass').value     = '';
+  document.getElementById('newUserPass2').value    = '';
+  document.getElementById('alEditUser').innerHTML  = '';
+  document.getElementById('modalUser').classList.remove('hidden');
+}
+
 function abrirEditarUsuario(id) {
   const u = getUsers().find(x => x.id === id); if (!u) return;
   _modoModal = 'edit';
@@ -1587,6 +1615,31 @@ function abrirCambiarPass(id) {
 }
 
 async function guardarCambiosUsuario() {
+  if (_modoModal === 'create') {
+    const name  = (document.getElementById('newUserName').value     || '').trim();
+    const cargo = (document.getElementById('newUserCargo').value    || '').trim();
+    const uname = (document.getElementById('newUserUsername').value || '').trim().toLowerCase();
+    const p     = (document.getElementById('newUserPass').value     || '').trim();
+    const p2    = (document.getElementById('newUserPass2').value    || '').trim();
+    if (!name)        return alerta('alEditUser', 'El nombre es obligatorio.', 'err');
+    if (!uname)       return alerta('alEditUser', 'El usuario es obligatorio.', 'err');
+    if (/\s/.test(uname)) return alerta('alEditUser', 'El usuario no puede tener espacios.', 'err');
+    if (!p)           return alerta('alEditUser', 'La contraseña es obligatoria.', 'err');
+    if (p.length < 6) return alerta('alEditUser', 'Mínimo 6 caracteres.', 'err');
+    if (p !== p2)     return alerta('alEditUser', 'Las contraseñas no coinciden.', 'err');
+    const users = getUsers();
+    if (users.find(x => x.username === uname)) return alerta('alEditUser', 'Ese nombre de usuario ya existe.', 'err');
+    const newUser = { id: Date.now(), name, cargo, username: uname, password: btoa(p), createdAt: new Date().toISOString() };
+    users.push(newUser);
+    setUsers(users);
+    if (navigator.onLine && api._url()) {
+      try { await api.saveUser(newUser); } catch(_) {}
+    }
+    alerta('alEditUser', '✅ Usuario creado correctamente.', 'ok');
+    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 1200);
+    return;
+  }
+
   const id    = Number(document.getElementById('editUserId').value);
   const users = getUsers();
   const idx   = users.findIndex(u => u.id === id);
@@ -1635,6 +1688,7 @@ async function eliminarUsuario(id) {
 
 function cerrarModalUser() {
   document.getElementById('modalUser').classList.add('hidden');
+  document.getElementById('createUserFields').classList.add('hidden');
 }
 
 // ── Init ──────────────────────────────────────────────────────
