@@ -318,8 +318,34 @@ tr:hover td{background:#fafafa}
             <option>ROM</option><option>UWAS</option><option>INDIGENA</option>
             <option>GUAHIVOS</option><option>ZENU</option><option>PIJAOS</option>
           </select></div>
-        <div class="fg" id="dGrupoPobl"><label>Descripción Grupo Poblacional</label>
-          <input type="text" name="grupoPobl" placeholder="Descripción del grupo"></div>
+        <div class="fg s3" id="dGrupoPobl"><label>Grupo Poblacional</label>
+          <select name="grupoPobl">
+            <option value="">-- Seleccione --</option>
+            <option value="1">1 — Población habitante de calle</option>
+            <option value="2">2 — Niños, niñas, adolescentes y jóvenes en proceso administrativo para el restablecimiento de sus derechos</option>
+            <option value="5">5 — Población con SISBEN</option>
+            <option value="6">6 — Menores de edad desvinculados del conflicto armado bajo la protección del ICBF</option>
+            <option value="8">8 — Población desmovilizada y/o miembros que celebren acuerdos de paz con el gobierno nacional</option>
+            <option value="9">9 — Víctimas del conflicto armado incluidas en el registro único de víctimas (Ley 1448 de 2011)</option>
+            <option value="10">10 — Población infantil vulnerable bajo protección en instituciones diferentes al ICBF</option>
+            <option value="11">11 — Personas incluidas en el programa de protección a testigos</option>
+            <option value="14">14 — Población privada de la libertad a cargo de entidades territoriales e inimputables por trastorno mental</option>
+            <option value="16">16 — Adultos mayores de escasos recursos en estado de abandono en centros de protección</option>
+            <option value="17">17 — Comunidades indígenas incluida la población recluida en centros de amortización</option>
+            <option value="18">18 — Población Rom</option>
+            <option value="22">22 — Población Privada de la Libertad a cargo del INPEC en prisión domiciliaria</option>
+            <option value="23">23 — Madres comunitarias o sustitutas beneficiarias del Fondo de Solidaridad Pensional (Ley 1450/2011 y 1769/2015)</option>
+            <option value="24">24 — Migrantes colombianos repatriados o deportados de Venezuela y su núcleo familiar</option>
+            <option value="25">25 — Adolescentes y jóvenes a cargo del ICBF en el SRPA</option>
+            <option value="27">27 — Recién nacido y menor de edad de padres no afiliados</option>
+            <option value="28">28 — Voluntarios Defensa Civil, Cruz Roja y bomberos y su núcleo familiar</option>
+            <option value="29">29 — Adultos con discapacidad entre 18 y 60 años, escasos recursos, en centros de protección</option>
+            <option value="30">30 — Migrante Venezolano e hijos menores con documento válido (solo novedades)</option>
+            <option value="31">31 — Afiliación de oficio sin encuesta SISBEN y sin pertenecer a población especial</option>
+            <option value="33">33 — Veteranos de la fuerza pública (Decreto 1070/2015 art. 2.3.1.8.3.4.1)</option>
+            <option value="34">34 — Población no pobre, no vulnerable (Contribución Solidaria)</option>
+            <option value="35">35 — Menores de 18 años sin encuesta Sisbén</option>
+          </select></div>
         <div class="fg"><label>Víctima del Conflicto Armado <span class="req">*</span></label>
           <select name="victimaConflicto" required><option value="">-- Seleccione --</option>
             <option value="SI">SI</option><option value="NO">NO</option></select></div>
@@ -900,10 +926,8 @@ function actualizarMultiple() {
 function togEtnia(sel) {
   const esIndigena = sel.value === 'Indígena';
   document.getElementById('dPuebloIndigena').style.display = esIndigena ? '' : 'none';
-  document.getElementById('dGrupoPobl').style.display = esIndigena ? 'none' : '';
   if (!esIndigena) {
     const s = document.querySelector('[name="puebloIndigena"]'); if (s) s.value = '';
-    const g = document.querySelector('[name="grupoPobl"]'); if (g) g.value = '';
   }
 }
 function togComp(sel) {
