@@ -249,6 +249,7 @@ tr:hover td{background:#fafafa}
   <!-- FORMULARIO -->
   <div id="vForm" class="main hidden">
     <div id="alForm"></div>
+    <div id="bannerDuplic"></div>
     <form id="frmReg" onsubmit="guardar(event)">
 
       <div class="card"><div class="sh sh-red">👤 1. Datos de Identificación</div><div class="sb"><div class="g4">
@@ -268,7 +269,7 @@ tr:hover td{background:#fafafa}
             <option value="PT">PT — Pasaporte</option>
           </select></div>
         <div class="fg"><label>Número de Identificación <span class="req">*</span></label>
-          <input type="text" name="identificacion" required placeholder="Número de documento"></div>
+          <input type="text" name="identificacion" id="fIdentificacion" required placeholder="Número de documento" onblur="verificarDuplicado()"></div>
         <div class="fg"><label>Fecha de Registro</label>
           <input type="date" name="fechaRegistro" id="fFechaReg"></div>
         <div class="fg"><label>Registrado por</label>
@@ -1040,58 +1041,239 @@ function limpiarFormCampos() {
   document.getElementById('alForm').innerHTML = '';
 }
 
+// ── Detección de duplicados ───────────────────────────────────
+let _editandoExistente = null;
+
+function verificarDuplicado() {
+  if (_editandoExistente !== null) return;
+  const docNum = (document.getElementById('fIdentificacion')?.value || '').trim();
+  if (docNum.length < 4) { document.getElementById('bannerDuplic').innerHTML = ''; return; }
+  const existe = getLocal().find(x => x.identificacion === docNum);
+  if (!existe) { document.getElementById('bannerDuplic').innerHTML = ''; return; }
+  const nom  = [existe.primerNombre, existe.primerApellido].filter(Boolean).join(' ');
+  const fReg = existe.fechaRegistro || (existe.timestampRegistro||'').split('T')[0] || '-';
+  document.getElementById('bannerDuplic').innerHTML = `
+    <div style="background:#FFF8E1;border:1.5px solid #FFC107;border-radius:8px;padding:12px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:1.5rem">⚠️</span>
+        <div>
+          <strong style="color:#B07800">¡Este documento ya está registrado!</strong>
+          <div style="font-size:0.82rem;color:#555">
+            <strong>${nom||'Sin nombre'}</strong> · ${existe.tipoId||''} ${existe.identificacion}
+            · Registrado: ${fReg}<br>Discapacidad: ${existe.tipoDiscapacidad||'No especificada'}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm" style="background:#1565C0;color:#fff"
+          onclick="cargarParaCompletar(${existe.id})">✏️ Completar datos faltantes</button>
+        <button type="button" class="btn btn-sm" style="background:#2E7D32;color:#fff"
+          onclick="verDetalle(${existe.id})">📝 Ver / Agregar evolución</button>
+      </div>
+    </div>`;
+}
+
+function mostrarModalDuplicado(r) {
+  const nom  = [r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ');
+  const fReg = r.fechaRegistro || (r.timestampRegistro||'').split('T')[0] || '-';
+  const CAMPOS = ['primerNombre','segundoNombre','primerApellido','segundoApellido','fechaNacimiento',
+    'edad','sexo','identidadGenero','perteneniaEtnica','grupoPobl','victimaConflicto','departamento',
+    'municipio','zona','tipoDiscapacidad','certificadoDisc','captacion','enRehabilitacion',
+    'asistiendoRehab','complicaciones','sistemaAfectado','origenDisc'];
+  const vacios = CAMPOS.filter(k => !r[k] || r[k] === '').length;
+  document.getElementById('modalCont').innerHTML = `
+    <div style="text-align:center;padding:8px 0 14px">
+      <div style="font-size:2.2rem;margin-bottom:6px">⚠️</div>
+      <h3 style="color:#E74C3C;margin-bottom:8px">Persona ya registrada</h3>
+      <p style="color:#555;font-size:0.87rem;margin:0">
+        <strong>${nom||'Sin nombre'}</strong><br>
+        ${r.tipoId||''} ${r.identificacion||''} · Registrado el ${fReg}<br>
+        Discapacidad: <strong>${r.tipoDiscapacidad||'No especificada'}</strong>
+      </p>
+      ${vacios > 0 ? `<div style="background:#FFF3CD;border:1px solid #FFD700;border-radius:8px;
+          padding:10px;margin:14px 0 0;font-size:0.84rem;color:#856404">
+          📋 <strong>${vacios} campo(s) sin completar</strong> en este registro</div>` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+      ${vacios > 0 ? `<button class="btn" style="background:#1565C0;color:#fff;padding:12px"
+          onclick="cargarParaCompletar(${r.id})">✏️ Completar los ${vacios} dato(s) faltantes</button>` : ''}
+      <button class="btn" style="background:#2E7D32;color:#fff;padding:12px"
+        onclick="verDetalle(${r.id})">📝 Ver registro y agregar nota de evolución</button>
+      <button class="btn btn-sm btn-ol" style="color:#888;margin-top:4px"
+        onclick="cerrarModal()">← Cancelar y corregir</button>
+    </div>`;
+  document.getElementById('modalBg').classList.remove('hidden');
+}
+
+function cargarParaCompletar(id) {
+  cerrarModal();
+  const r = getLocal().find(x => x.id === id); if (!r) return;
+  _editandoExistente = id;
+  const form = document.getElementById('frmReg');
+  const SKIP = new Set(['id','timestampRegistro','nota','notaEditadaPor','notaEditadaEn',
+    'discapacidadesMultiple','certificadoUrl','ultimaActualizacion','actualizadoPor']);
+  for (const [k, v] of Object.entries(r)) {
+    if (SKIP.has(k) || !v || v === '') continue;
+    const el = form.querySelector(`[name="${k}"]`);
+    if (!el || el.type === 'file') continue;
+    el.value = v;
+  }
+  // Departamento → cargar municipios → seleccionar municipio
+  const depSel = form.querySelector('[name="departamento"]');
+  if (depSel && r.departamento) { depSel.value = r.departamento; cargaMuni(depSel); }
+  const muniSel = document.getElementById('selMuni');
+  if (muniSel && r.municipio) muniSel.value = r.municipio;
+  // Pertenencia étnica → pueblo indígena
+  const etniaSel = form.querySelector('[name="perteneniaEtnica"]');
+  if (etniaSel) togEtnia(etniaSel);
+  // Tipo discapacidad → checkboxes múltiple
+  const discSel = form.querySelector('[name="tipoDiscapacidad"]');
+  if (discSel) {
+    togMultiple(discSel);
+    if (r.tipoDiscapacidad === 'Múltiple' && r.discapacidadesMultiple) {
+      const vals = r.discapacidadesMultiple.split(', ');
+      document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(cb => { cb.checked = vals.includes(cb.value); });
+      document.getElementById('discapacidadesMultiple').value = r.discapacidadesMultiple;
+    }
+  }
+  // Certificado
+  const certSel = form.querySelector('[name="certificadoDisc"]');
+  if (certSel) {
+    togCertificado(certSel);
+    if (r.certificadoUrl) {
+      document.getElementById('certificadoUrl').value = r.certificadoUrl;
+      document.getElementById('prevCertificado').innerHTML =
+        `<div style="padding:8px;background:#E8F5E9;border-radius:6px;font-size:0.82rem;margin-top:6px">
+          ✅ Certificado existente: <a href="${r.certificadoUrl}" target="_blank" style="color:#1565C0">Ver en Drive</a>
+          <span style="color:#888;display:block;font-size:0.78rem">Sube un archivo nuevo solo si deseas reemplazarlo</span>
+        </div>`;
+    }
+  }
+  // Edad
+  const fnEl = form.querySelector('[name="fechaNacimiento"]');
+  if (fnEl && r.fechaNacimiento) calcEdad(fnEl);
+  // Banner modo edición
+  const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ');
+  document.getElementById('bannerDuplic').innerHTML = `
+    <div style="background:#E3F2FD;border:1.5px solid #1565C0;border-radius:8px;padding:12px 16px;
+                margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:1.4rem">✏️</span>
+      <div style="flex:1;min-width:0">
+        <strong style="color:#1565C0">Modo actualización</strong>
+        <div style="font-size:0.82rem;color:#555">Completando datos de
+          <strong>${nom}</strong> · ${r.tipoId||''} ${r.identificacion||''}</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-ol" onclick="cancelarEdicion()"
+        style="font-size:0.8rem;white-space:nowrap">✕ Cancelar</button>
+    </div>`;
+  document.querySelector('#frmReg button[type="submit"]').innerHTML = '💾 Actualizar Registro';
+  vista('form');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelarEdicion() {
+  _editandoExistente = null;
+  document.getElementById('bannerDuplic').innerHTML = '';
+  document.querySelector('#frmReg button[type="submit"]').innerHTML = '💾 Guardar Registro';
+  document.getElementById('frmReg').reset();
+  document.getElementById('fEdad').value = '';
+  document.getElementById('fFechaReg').value = hoy();
+  document.getElementById('fRegPor').value = getSess()?.username || '';
+  document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
+  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena','dMultiple','dCertificado'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(c => c.checked = false);
+  document.getElementById('discapacidadesMultiple').value = '';
+  document.getElementById('prevCertificado').innerHTML = '';
+  document.getElementById('certificadoUrl').value = '';
+}
+
 // ── Guardar ───────────────────────────────────────────────────
 async function guardar(e) {
   e.preventDefault();
   const fd = new FormData(document.getElementById('frmReg'));
   const rec = {};
   for (const [k, v] of fd.entries()) rec[k] = v.trim();
-  rec.id = Date.now();
-  rec.timestampRegistro = new Date().toISOString();
 
-  // Subir certificado si hay archivo seleccionado
-  const fileInput = document.getElementById('fileCertificado');
-  if (fileInput?.files[0]) {
-    alerta('alForm', '⏳ Subiendo certificado a Drive...', 'inf');
-    try {
-      const certUrl = await api.uploadCertificado(rec.id, fileInput.files[0]);
-      rec.certificadoUrl = certUrl;
-      document.getElementById('certificadoUrl').value = certUrl;
-    } catch {
-      alerta('alForm', '⚠ No se pudo subir el certificado. Se guardará el registro sin el archivo.', 'err');
+  if (_editandoExistente !== null) {
+    // ── MODO ACTUALIZACIÓN ──────────────────────────────────────
+    const original = getLocal().find(r => r.id === _editandoExistente);
+    rec.id = _editandoExistente;
+    rec.timestampRegistro = original?.timestampRegistro || new Date().toISOString();
+    rec.ultimaActualizacion = new Date().toISOString();
+    rec.actualizadoPor = getSess()?.username || '';
+    if (original?.nota) rec.nota = original.nota;
+    if (original?.notaEditadaPor) rec.notaEditadaPor = original.notaEditadaPor;
+    if (original?.notaEditadaEn)  rec.notaEditadaEn  = original.notaEditadaEn;
+    // Certificado: mantener URL existente si no se subió uno nuevo
+    const fileInput = document.getElementById('fileCertificado');
+    if (fileInput?.files[0]) {
+      alerta('alForm', '⏳ Subiendo certificado a Drive...', 'inf');
+      try {
+        rec.certificadoUrl = await api.uploadCertificado(rec.id, fileInput.files[0]);
+      } catch { alerta('alForm', '⚠ No se pudo subir el certificado.', 'err'); }
+    } else if (original?.certificadoUrl) {
+      rec.certificadoUrl = original.certificadoUrl;
     }
-  }
+    const local = getLocal();
+    const idx = local.findIndex(r => r.id === _editandoExistente);
+    if (idx >= 0) local[idx] = rec; else local.push(rec);
+    setLocal(local); actualizarDash();
+    alerta('alForm', '✅ Registro actualizado correctamente.', 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setSyncStatus('carg', 'Sincronizando...');
+    try { const t = await api.save(rec); setSyncStatus('ok', 'Drive: ' + t + ' registro(s)'); }
+    catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
 
-  // Guardar local siempre primero
-  const local = getLocal(); local.push(rec); setLocal(local);
-  alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-
-  // Intentar subir a Drive o encolar
-  const tieneApi = api._gsOk() || api._url();
-  if (!navigator.onLine || !tieneApi) {
-    encolarRegistro(rec);
-    setSyncStatus('off', 'Sin conexión — guardado local ✓');
   } else {
-    setSyncStatus('carg', 'Guardando en Drive...');
-    try {
-      const total = await api.save(rec);
-      setSyncStatus('ok', 'Drive: ' + total + ' registro(s)');
-    } catch {
-      encolarRegistro(rec);
-      setSyncStatus('off', 'Pendiente de sincronización ✓');
+    // ── MODO NUEVO REGISTRO ─────────────────────────────────────
+    // Verificar duplicado al enviar
+    const docNum = (rec.identificacion || '').trim();
+    if (docNum) {
+      const existe = getLocal().find(x => x.identificacion === docNum);
+      if (existe) { mostrarModalDuplicado(existe); return; }
+    }
+    rec.id = Date.now();
+    rec.timestampRegistro = new Date().toISOString();
+    const fileInput = document.getElementById('fileCertificado');
+    if (fileInput?.files[0]) {
+      alerta('alForm', '⏳ Subiendo certificado a Drive...', 'inf');
+      try {
+        const certUrl = await api.uploadCertificado(rec.id, fileInput.files[0]);
+        rec.certificadoUrl = certUrl;
+        document.getElementById('certificadoUrl').value = certUrl;
+      } catch { alerta('alForm', '⚠ No se pudo subir el certificado. Se guardará sin el archivo.', 'err'); }
+    }
+    const local = getLocal(); local.push(rec); setLocal(local);
+    alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const tieneApi = api._gsOk() || api._url();
+    if (!navigator.onLine || !tieneApi) {
+      encolarRegistro(rec); setSyncStatus('off', 'Sin conexión — guardado local ✓');
+    } else {
+      setSyncStatus('carg', 'Guardando en Drive...');
+      try { const total = await api.save(rec); setSyncStatus('ok', 'Drive: ' + total + ' registro(s)'); }
+      catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
     }
   }
 
-  // Reset form
+  // ── Reset form ──────────────────────────────────────────────
+  _editandoExistente = null;
+  document.getElementById('bannerDuplic').innerHTML = '';
+  document.querySelector('#frmReg button[type="submit"]').innerHTML = '💾 Guardar Registro';
   document.getElementById('frmReg').reset();
   document.getElementById('fEdad').value = '';
   document.getElementById('fFechaReg').value = hoy();
   document.getElementById('fRegPor').value = getSess()?.username || '';
   document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
-  ['dSysAf', 'dTiComp', 'dSubAdq', 'dSubNac'].forEach(id => {
+  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena','dMultiple','dCertificado'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
+  document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(c => c.checked = false);
+  document.getElementById('discapacidadesMultiple').value = '';
+  document.getElementById('prevCertificado').innerHTML = '';
+  document.getElementById('certificadoUrl').value = '';
 }
 
 // ── Tabla registros ───────────────────────────────────────────
