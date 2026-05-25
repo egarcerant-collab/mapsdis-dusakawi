@@ -765,21 +765,31 @@ const api = {
   loadUsers() {
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]')))
-        .withFailureHandler(rej).loadUsersGAS());
+        .withFailureHandler(() => {
+          // Fallback: si loadUsersGAS no existe aún (backend sin redesplegar), usar URL
+          if (this._url()) this._get({ action: 'loadUsers' }).then(res).catch(rej);
+          else rej(new Error('Sin URL de servidor'));
+        }).loadUsersGAS());
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'loadUsers' });
   },
   saveUser(user) {
     if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(rej)
-        .saveUserGAS(JSON.stringify(user)));
+      google.script.run.withSuccessHandler(res).withFailureHandler(() => {
+        // Fallback: si saveUserGAS no existe aún, usar doGet vía URL
+        if (this._url()) this._get({ action: 'saveUser', user }).then(res).catch(rej);
+        else rej(new Error('Sin URL de servidor'));
+      }).saveUserGAS(JSON.stringify(user)));
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'saveUser', user });
   },
   removeUser(id) {
     if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(rej)
-        .deleteUserGAS(id));
+      google.script.run.withSuccessHandler(res).withFailureHandler(() => {
+        // Fallback: si deleteUserGAS no existe aún, usar doGet vía URL
+        if (this._url()) this._get({ action: 'deleteUser', id }).then(res).catch(rej);
+        else rej(new Error('Sin URL de servidor'));
+      }).deleteUserGAS(id));
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'deleteUser', id });
   },
