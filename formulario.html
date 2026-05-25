@@ -1795,13 +1795,28 @@ async function renderAdmin() {
   cont.innerHTML = '<p style="color:#aaa;text-align:center;padding:16px">⏳ Sincronizando usuarios...</p>';
 
   let users = getUsers();
-  if (navigator.onLine && api._url()) {
+  const puedeSync = navigator.onLine && (api._url() || api._gsOk());
+  if (puedeSync) {
     try {
       const driveUsers = await api.loadUsers();
-      const driveIds = new Set(driveUsers.map(u => String(u.id)));
-      const soloLocal = users.filter(u => !driveIds.has(String(u.id)));
-      users = [...driveUsers, ...soloLocal];
+      // Merge inteligente: gana la versión con updatedAt más reciente
+      const merged = {};
+      [...driveUsers, ...users].forEach(u => {
+        const key = String(u.id);
+        if (!merged[key]) { merged[key] = u; return; }
+        const tsExist = merged[key].updatedAt || merged[key].createdAt || '';
+        const tsNew   = u.updatedAt || u.createdAt || '';
+        if (tsNew > tsExist) merged[key] = u;   // local más nuevo → prevalece
+      });
+      users = Object.values(merged);
       setUsers(users);
+      // Si hay usuarios locales más nuevos que Drive, resubirlos
+      users.forEach(u => {
+        const drv = driveUsers.find(d => String(d.id) === String(u.id));
+        const uTs  = u.updatedAt || u.createdAt || '';
+        const dTs  = drv ? (drv.updatedAt || drv.createdAt || '') : '';
+        if (!drv || uTs > dTs) api.saveUser(u).catch(() => {});
+      });
     } catch(_) {
       alerta('alAdmin', '⚠ No se pudo sincronizar usuarios desde Drive (usando datos locales).', 'err');
     }
@@ -1889,14 +1904,21 @@ async function guardarCambiosUsuario() {
     if (p !== p2)     return alerta('alEditUser', 'Las contraseñas no coinciden.', 'err');
     const users = getUsers();
     if (users.find(x => x.username === uname)) return alerta('alEditUser', 'Ese nombre de usuario ya existe.', 'err');
-    const newUser = { id: Date.now(), name, cargo, username: uname, password: btoa(p), createdAt: new Date().toISOString() };
+    const newUser = { id: Date.now(), name, cargo, username: uname, password: btoa(p), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     users.push(newUser);
     setUsers(users);
-    if (navigator.onLine && api._url()) {
-      try { await api.saveUser(newUser); } catch(_) {}
+    const puedeApi = navigator.onLine && (api._url() || api._gsOk());
+    if (puedeApi) {
+      try {
+        await api.saveUser(newUser);
+        alerta('alEditUser', '✅ Usuario creado y guardado en Drive.', 'ok');
+      } catch(err) {
+        alerta('alEditUser', '⚠ Creado localmente pero NO se guardó en Drive. Verifique la URL del servidor y vuelva a guardar.', 'err');
+      }
+    } else {
+      alerta('alEditUser', '⚠ Sin conexión. Usuario creado solo localmente — sincronizará al recuperar conexión.', 'err');
     }
-    alerta('alEditUser', '✅ Usuario creado correctamente.', 'ok');
-    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 1200);
+    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 2000);
     return;
   }
 
@@ -1909,15 +1931,23 @@ async function guardarCambiosUsuario() {
     const name  = (document.getElementById('editUserName').value  || '').trim();
     const cargo = (document.getElementById('editUserCargo').value || '').trim();
     if (!name) return alerta('alEditUser', 'El nombre es obligatorio.', 'err');
-    users[idx].name  = name;
-    users[idx].cargo = cargo;
+    users[idx].name      = name;
+    users[idx].cargo     = cargo;
+    users[idx].updatedAt = new Date().toISOString();
     setUsers(users);
     if (getSess()?.id === id) setSess({...getSess(), name, cargo});
-    if (navigator.onLine && api._url()) {
-      try { await api.saveUser(users[idx]); } catch(_) {}
+    const puedeEdit = navigator.onLine && (api._url() || api._gsOk());
+    if (puedeEdit) {
+      try {
+        await api.saveUser(users[idx]);
+        alerta('alEditUser', '✅ Usuario actualizado y guardado en Drive.', 'ok');
+      } catch(err) {
+        alerta('alEditUser', '⚠ Actualizado localmente pero NO se guardó en Drive. Verifique conexión.', 'err');
+      }
+    } else {
+      alerta('alEditUser', '⚠ Sin conexión. Cambio guardado localmente — sincronizará al recuperar conexión.', 'err');
     }
-    alerta('alEditUser', 'Usuario actualizado.', 'ok');
-    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 1200);
+    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 2000);
 
   } else {
     const p  = (document.getElementById('editPassNew').value  || '').trim();
@@ -1925,13 +1955,21 @@ async function guardarCambiosUsuario() {
     if (!p)           return alerta('alEditUser', 'Ingrese la nueva contraseña.', 'err');
     if (p.length < 6) return alerta('alEditUser', 'Mínimo 6 caracteres.', 'err');
     if (p !== p2)     return alerta('alEditUser', 'Las contraseñas no coinciden.', 'err');
-    users[idx].password = btoa(p);
+    users[idx].password  = btoa(p);
+    users[idx].updatedAt = new Date().toISOString();
     setUsers(users);
-    if (navigator.onLine && api._url()) {
-      try { await api.saveUser(users[idx]); } catch(_) {}
+    const puedePass = navigator.onLine && (api._url() || api._gsOk());
+    if (puedePass) {
+      try {
+        await api.saveUser(users[idx]);
+        alerta('alEditUser', '✅ Contraseña actualizada y guardada en Drive.', 'ok');
+      } catch(err) {
+        alerta('alEditUser', '⚠ Contraseña cambiada localmente pero NO se guardó en Drive. Verifique conexión.', 'err');
+      }
+    } else {
+      alerta('alEditUser', '⚠ Sin conexión. Contraseña cambiada localmente — sincronizará al recuperar conexión.', 'err');
     }
-    alerta('alEditUser', 'Contraseña cambiada correctamente.', 'ok');
-    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 1200);
+    setTimeout(() => { cerrarModalUser(); renderAdmin(); }, 2000);
   }
 }
 
@@ -1940,8 +1978,13 @@ async function eliminarUsuario(id) {
   if (!u) return;
   if (!confirm('¿Eliminar al usuario @' + u.username + '? Esta acción no se puede deshacer.')) return;
   setUsers(getUsers().filter(x => x.id !== id));
-  if (navigator.onLine && api._url()) {
-    try { await api.removeUser(id); } catch(_) {}
+  const puedeDel = navigator.onLine && (api._url() || api._gsOk());
+  if (puedeDel) {
+    try {
+      await api.removeUser(id);
+    } catch(err) {
+      alerta('alAdmin', '⚠ Eliminado localmente pero NO se borró en Drive. Verifique conexión.', 'err');
+    }
   }
   renderAdmin();
 }
