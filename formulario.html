@@ -1194,6 +1194,7 @@ function limpiarFormCampos() {
 
 // ── Detección de duplicados ───────────────────────────────────
 let _editandoExistente = null;
+let _guardando = false;          // Previene envíos dobles
 
 function verificarDuplicado() {
   if (_editandoExistente !== null) return;
@@ -1343,6 +1344,12 @@ function cancelarEdicion() {
 // ── Guardar ───────────────────────────────────────────────────
 async function guardar(e) {
   e.preventDefault();
+  if (_guardando) return;                          // Bloquear doble envío
+  _guardando = true;
+  const btnSubmit = document.querySelector('#frmReg button[type="submit"]');
+  const textoOriginal = btnSubmit?.innerHTML || '💾 Guardar Registro';
+  if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.innerHTML = '⏳ Guardando...'; }
+  try {
   const fd = new FormData(document.getElementById('frmReg'));
   const rec = {};
   for (const [k, v] of fd.entries()) rec[k] = v.trim();
@@ -1390,6 +1397,8 @@ async function guardar(e) {
     }
     rec.id = Date.now();
     rec.timestampRegistro = new Date().toISOString();
+    // Guardar localmente ANTES del upload → evita duplicados si el usuario vuelve a hacer clic
+    const localPrev = getLocal(); localPrev.push(rec); setLocal(localPrev);
     const fileInput = document.getElementById('fileCertificado');
     if (fileInput?.files[0]) {
       const fSize2 = (fileInput.files[0].size / 1024).toFixed(0);
@@ -1400,9 +1409,13 @@ async function guardar(e) {
           (i, t) => alerta('alForm', `⏳ Subiendo a Drive... ${Math.round(i/t*100)}%`, 'inf'));
         rec.certificadoUrl = certUrl;
         document.getElementById('certificadoUrl').value = certUrl;
+        // Actualizar registro local con la URL del certificado
+        const localUpd = getLocal();
+        const idxUpd = localUpd.findIndex(r => r.id === rec.id);
+        if (idxUpd >= 0) { localUpd[idxUpd] = rec; setLocal(localUpd); }
       } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
     }
-    const local = getLocal(); local.push(rec); setLocal(local);
+    // local ya fue guardado antes del upload — solo notificar
     alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     const tieneApi = api._gsOk() || api._url();
@@ -1416,6 +1429,10 @@ async function guardar(e) {
   }
 
   // ── Reset form ──────────────────────────────────────────────
+  } finally {
+    _guardando = false;
+    if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = textoOriginal; }
+  }
   _editandoExistente = null;
   document.getElementById('bannerDuplic').innerHTML = '';
   document.querySelector('#frmReg button[type="submit"]').innerHTML = '💾 Guardar Registro';
