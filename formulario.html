@@ -765,20 +765,36 @@ const supa = {
     if (!r.ok) throw new Error('Supabase ' + r.status);
   },
   async loadUsers() {
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_app?select=usuario&order=id.asc', { headers: this._h() });
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios?select=*&order=id.asc', { headers: this._h() });
     if (!r.ok) throw new Error('Supabase ' + r.status);
-    return (await r.json()).map(x => x.usuario);
+    // Mapear snake_case de DB → camelCase del app
+    return (await r.json()).map(u => ({
+      id: u.id, name: u.name, cargo: u.cargo,
+      username: u.username, password: u.password,
+      superadmin: u.superadmin,
+      createdAt: u.created_at, updatedAt: u.updated_at
+    }));
   },
   async saveUser(user) {
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_app', {
+    const row = {
+      id:         user.id,
+      name:       user.name       || '',
+      cargo:      user.cargo      || '',
+      username:   user.username   || '',
+      password:   user.password   || '',
+      superadmin: user.superadmin || false,
+      created_at: user.createdAt  || new Date().toISOString(),
+      updated_at: user.updatedAt  || new Date().toISOString()
+    };
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios', {
       method: 'POST',
       headers: { ...this._h(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ id: user.id, usuario: user })
+      body: JSON.stringify(row)
     });
     if (!r.ok) throw new Error('Supabase ' + r.status);
   },
   async deleteUser(id) {
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_app?id=eq.' + id, { method: 'DELETE', headers: this._h() });
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios?id=eq.' + id, { method: 'DELETE', headers: this._h() });
     if (!r.ok) throw new Error('Supabase ' + r.status);
   }
 };
