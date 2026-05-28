@@ -735,8 +735,55 @@ function instalarPWA() {
   });
 }
 
-// ── Capa API: soporta google.script.run y fetch() ─────────────
-// URL estándar (sin /a/macros/dominio/) — funciona para acceso anónimo desde GitHub Pages
+// ── Supabase — backend primario ────────────────────────────────
+const SUPA_URL = 'https://gybykdfcozxvppjusgrt.supabase.co';
+const SUPA_KEY = 'sb_publishable_ddqijTSYl2_8Ye2QMv3r_g_3Ie6VblP';
+
+const supa = {
+  _h() {
+    return {
+      'apikey': SUPA_KEY,
+      'Authorization': 'Bearer ' + SUPA_KEY,
+      'Content-Type': 'application/json'
+    };
+  },
+  async loadRecords() {
+    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?select=registro&order=id.asc', { headers: this._h() });
+    if (!r.ok) throw new Error('Supabase ' + r.status);
+    return (await r.json()).map(x => x.registro);
+  },
+  async saveRecord(rec) {
+    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad', {
+      method: 'POST',
+      headers: { ...this._h(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id: rec.id, registro: rec })
+    });
+    if (!r.ok) throw new Error('Supabase ' + r.status);
+  },
+  async deleteRecord(id) {
+    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?id=eq.' + id, { method: 'DELETE', headers: this._h() });
+    if (!r.ok) throw new Error('Supabase ' + r.status);
+  },
+  async loadUsers() {
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_app?select=usuario&order=id.asc', { headers: this._h() });
+    if (!r.ok) throw new Error('Supabase ' + r.status);
+    return (await r.json()).map(x => x.usuario);
+  },
+  async saveUser(user) {
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_app', {
+      method: 'POST',
+      headers: { ...this._h(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id: user.id, usuario: user })
+    });
+    if (!r.ok) throw new Error('Supabase ' + r.status);
+  },
+  async deleteUser(id) {
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_app?id=eq.' + id, { method: 'DELETE', headers: this._h() });
+    if (!r.ok) throw new Error('Supabase ' + r.status);
+  }
+};
+
+// ── GAS — backend secundario (Drive) ──────────────────────────
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzY-HYJEP2BAqhmnN_ROzfg_CSN5K7oLgz76PDY_FMdwrGWfxSBvQWP1OXSACu1Ni-uvg/exec';
 
 const api = {
@@ -756,64 +803,76 @@ const api = {
     return fetch(this._url() + '?' + qs).then(r => r.json())
       .then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
   },
-  load() {
+  // ── Registros: Supabase primario → GAS fallback ───────────────
+  async load() {
+    try { return await supa.loadRecords(); } catch(e) { console.warn('Supabase load falló, usando GAS:', e.message); }
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]'))).withFailureHandler(rej).loadRecords());
-    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
+    if (!this._url()) return [];
     return this._get({ action: 'load' });
   },
-  save(record) {
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveRecord(JSON.stringify(record)));
-    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    // Si el registro es grande (>1500 chars JSON), usar POST para evitar límite de URL
-    const recJson = JSON.stringify(record);
-    if (recJson.length > 1500) {
-      return this._post({ action: 'save', record });
+  async save(record) {
+    // Guardar en Supabase (primario) y GAS/Drive (respaldo) en paralelo
+    const supaPromise = supa.saveRecord(record).catch(e => console.warn('Supabase save falló:', e.message));
+    let gasPromise;
+    if (this._gsOk()) {
+      gasPromise = new Promise((res, rej) =>
+        google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveRecord(JSON.stringify(record)));
+    } else if (this._url()) {
+      const recJson = JSON.stringify(record);
+      gasPromise = recJson.length > 1500 ? this._post({ action: 'save', record }) : this._get({ action: 'save', record });
     }
-    return this._get({ action: 'save', record });
+    await supaPromise;
+    if (gasPromise) gasPromise.catch(e => console.warn('GAS save falló:', e.message));
+    return record;
   },
-  remove(id) {
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(rej).deleteRecord(id));
-    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    return this._get({ action: 'delete', id });
+  async remove(id) {
+    const supaP = supa.deleteRecord(id).catch(e => console.warn('Supabase delete falló:', e.message));
+    if (this._gsOk()) google.script.run.deleteRecord(id);
+    else if (this._url()) this._get({ action: 'delete', id }).catch(() => {});
+    await supaP;
   },
-  saveAll(records) {
+  async saveAll(records) {
+    await Promise.all(records.map(r => supa.saveRecord(r).catch(() => {})));
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveAllRecords(JSON.stringify(records)));
-    if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
-    return this._get({ action: 'saveAll', records });
+    if (this._url()) return this._get({ action: 'saveAll', records });
   },
-  loadUsers() {
+  // ── Usuarios: Supabase primario → GAS fallback ────────────────
+  async loadUsers() {
+    try { return await supa.loadUsers(); } catch(e) { console.warn('Supabase loadUsers falló, usando GAS:', e.message); }
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]')))
         .withFailureHandler(() => {
-          // Fallback: si loadUsersGAS no existe aún (backend sin redesplegar), usar URL
           if (this._url()) this._get({ action: 'loadUsers' }).then(res).catch(rej);
           else rej(new Error('Sin URL de servidor'));
         }).loadUsersGAS());
     if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
     return this._get({ action: 'loadUsers' });
   },
-  saveUser(user) {
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(() => {
-        // Fallback: si saveUserGAS no existe aún, usar doGet vía URL
-        if (this._url()) this._get({ action: 'saveUser', user }).then(res).catch(rej);
-        else rej(new Error('Sin URL de servidor'));
-      }).saveUserGAS(JSON.stringify(user)));
-    if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
-    return this._get({ action: 'saveUser', user });
+  async saveUser(user) {
+    const supaP = supa.saveUser(user).catch(e => console.warn('Supabase saveUser falló:', e.message));
+    let gasP;
+    if (this._gsOk()) {
+      gasP = new Promise((res, rej) =>
+        google.script.run.withSuccessHandler(res).withFailureHandler(() => {
+          if (this._url()) this._get({ action: 'saveUser', user }).then(res).catch(rej);
+          else rej(new Error('Sin URL'));
+        }).saveUserGAS(JSON.stringify(user)));
+    } else if (this._url()) {
+      gasP = this._get({ action: 'saveUser', user });
+    }
+    await supaP;
+    if (gasP) return gasP;
   },
-  removeUser(id) {
+  async removeUser(id) {
+    supa.deleteUser(id).catch(e => console.warn('Supabase deleteUser falló:', e.message));
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(res).withFailureHandler(() => {
-        // Fallback: si deleteUserGAS no existe aún, usar doGet vía URL
         if (this._url()) this._get({ action: 'deleteUser', id }).then(res).catch(rej);
         else rej(new Error('Sin URL de servidor'));
       }).deleteUserGAS(id));
-    if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
+    if (!this._url()) return Promise.resolve();
     return this._get({ action: 'deleteUser', id });
   },
   // Comprime imágenes antes de subir (fotos → JPEG 80%, max 1400px)
