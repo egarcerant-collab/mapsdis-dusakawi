@@ -646,8 +646,14 @@ tr:hover td{background:#fafafa}
       <div id="editUserFields">
         <div class="fg"><label>Nombre Completo</label>
           <input type="text" id="editUserName" placeholder="Nombre completo"></div>
-        <div class="fg"><label>Cargo / Rol</label>
-          <input type="text" id="editUserCargo" placeholder="Cargo o rol"></div>
+        <div class="fg"><label>Cargo (título laboral)</label>
+          <input type="text" id="editUserCargo" placeholder="Ej: Profesional en Trabajo Social"></div>
+        <div class="fg"><label>Perfil de acceso</label>
+          <select id="editUserPerfil">
+            <option value="usuario">👤 Usuario — solo registrar y ver</option>
+            <option value="administrador">🔧 Administrador — editar y gestionar</option>
+            <option value="superadministrador">⭐ Super Administrador — acceso total</option>
+          </select></div>
         <div class="fg"><label>Usuario</label>
           <input type="text" id="editUserUsername" readonly style="background:#f5f5f5"></div>
       </div>
@@ -660,8 +666,14 @@ tr:hover td{background:#fafafa}
       <div id="createUserFields" class="hidden">
         <div class="fg"><label>Nombre Completo <span class="req">*</span></label>
           <input type="text" id="newUserName" placeholder="Nombre completo"></div>
-        <div class="fg"><label>Cargo / Rol</label>
-          <input type="text" id="newUserCargo" placeholder="Cargo o rol en la organización"></div>
+        <div class="fg"><label>Cargo (título laboral)</label>
+          <input type="text" id="newUserCargo" placeholder="Ej: Asistente Rutas PYMS"></div>
+        <div class="fg"><label>Perfil de acceso <span class="req">*</span></label>
+          <select id="newUserPerfil">
+            <option value="usuario">👤 Usuario — solo registrar y ver</option>
+            <option value="administrador">🔧 Administrador — editar y gestionar</option>
+            <option value="superadministrador">⭐ Super Administrador — acceso total</option>
+          </select></div>
         <div class="fg"><label>Usuario <span class="req">*</span></label>
           <input type="text" id="newUserUsername" placeholder="Nombre de usuario (sin espacios)"></div>
         <div class="fg"><label>Contraseña <span class="req">*</span></label>
@@ -771,6 +783,7 @@ const supa = {
     return (await r.json()).map(u => ({
       id: u.id, name: u.name, cargo: u.cargo,
       username: u.username, password: u.password,
+      perfil: u.perfil || (u.superadmin ? 'superadministrador' : 'usuario'),
       superadmin: u.superadmin,
       createdAt: u.created_at, updatedAt: u.updated_at
     }));
@@ -782,7 +795,8 @@ const supa = {
       cargo:      user.cargo      || '',
       username:   user.username   || '',
       password:   user.password   || '',
-      superadmin: user.superadmin || false,
+      perfil:     getPerfil(user),
+      superadmin: esSuperAdmin(user),
       created_at: user.createdAt  || new Date().toISOString(),
       updated_at: user.updatedAt  || new Date().toISOString()
     };
@@ -1183,11 +1197,18 @@ async function doRegister() {
 
 function doLogout() { localStorage.removeItem(K.sess); go('scrLogin'); }
 
+// ── Helpers de perfil ─────────────────────────────────────────
+const getPerfil    = u => u?.perfil || (u?.superadmin ? 'superadministrador' : 'usuario');
+const esSuperAdmin = u => getPerfil(u) === 'superadministrador';
+const esAdmin      = u => ['administrador','superadministrador'].includes(getPerfil(u));
+
 function iniciarApp(user) {
+  const perfil = getPerfil(user);
+  const perfilTag = perfil === 'superadministrador' ? ' ⭐' : perfil === 'administrador' ? ' 🔧' : '';
   document.getElementById('hdrUser').textContent =
-    '👤 ' + user.name + (user.cargo ? ' · ' + user.cargo : '');
+    '👤 ' + user.name + (user.cargo ? ' · ' + user.cargo : '') + perfilTag;
   const btnAdmin = document.getElementById('nAdmin');
-  if (btnAdmin) btnAdmin.classList.toggle('hidden', !user.superadmin);
+  if (btnAdmin) btnAdmin.classList.toggle('hidden', !esAdmin(user));
   go('scrApp');
   vista('recs');
   setTimeout(sincronizar, 500);
@@ -1586,8 +1607,8 @@ function renderRecs(recs) {
       <td>${r.regimen||'-'}</td><td>${rehab}</td><td>${fReg}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
-        ${getSess()?.superadmin ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
-        ${getSess()?.superadmin ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
+        ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
+        ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
   }).join('');
   document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
@@ -1605,7 +1626,7 @@ function filtrar() {
 }
 
 async function eliminar(id) {
-  if (!getSess()?.superadmin) {
+  if (!esSuperAdmin(getSess())) {
     alert('Solo el Super Administrador puede eliminar registros.');
     return;
   }
@@ -1622,7 +1643,7 @@ async function eliminar(id) {
 }
 
 async function borrarTodo() {
-  if (!getSess()?.superadmin) {
+  if (!esSuperAdmin(getSess())) {
     alert('Solo el Super Administrador puede borrar todos los registros.');
     return;
   }
@@ -1672,7 +1693,7 @@ function verDetalle(id) {
   html += `</div>`;
 
   // Sección de nota: editable solo para superadmin
-  const puedeEditar = sess?.superadmin;
+  const puedeEditar = esSuperAdmin(sess);
   const notaMeta = r.notaEditadaPor
     ? `<div style="font-size:0.72rem;color:#999;margin-top:4px">Editada por @${r.notaEditadaPor} · ${(r.notaEditadaEn||'').split('T')[0]}</div>`
     : '';
@@ -1961,15 +1982,18 @@ async function renderAdmin() {
   if (!users.length) { cont.innerHTML = '<p style="color:#aaa;text-align:center;padding:20px">Sin usuarios registrados.</p>'; return; }
   cont.innerHTML = users.map(u => {
     const av    = (u.name||u.username).charAt(0).toUpperCase();
-    const suTag = u.superadmin
-      ? '<span class="bdg bdg-y" style="background:#FEF9E7;color:#B07800">Super Admin</span>'
-      : '<span class="bdg bdg-b">Usuario</span>';
+    const p = getPerfil(u);
+    const suTag = p==='superadministrador'
+      ? '<span class="bdg bdg-y" style="background:#FEF9E7;color:#B07800">⭐ Super Admin</span>'
+      : p==='administrador'
+      ? '<span class="bdg" style="background:#E3F2FD;color:#1565C0">🔧 Administrador</span>'
+      : '<span class="bdg bdg-b">👤 Usuario</span>';
     const creado = u.createdAt ? u.createdAt.split('T')[0] : '-';
-    return `<div class="usr-card ${u.superadmin?'superadmin':''}">
-      <div class="usr-av ${u.superadmin?'su':''}">${av}</div>
+    return `<div class="usr-card ${p==='superadministrador'?'superadmin':''}">
+      <div class="usr-av ${p==='superadministrador'?'su':''}">${av}</div>
       <div class="usr-info">
         <div class="usr-name">${u.name||u.username} ${suTag}</div>
-        <div class="usr-meta">@${u.username}${u.cargo?' · '+u.cargo:''} &nbsp;|&nbsp; Creado: ${creado}</div>
+        <div class="usr-meta">@${u.username}${u.cargo?' · <em>'+u.cargo+'</em>':''} &nbsp;|&nbsp; Creado: ${creado}</div>
       </div>
       <div class="usr-acts">
         <button class="btn btn-b btn-sm" onclick="abrirEditarUsuario(${u.id})">✏️ Editar</button>
@@ -2003,6 +2027,7 @@ function abrirEditarUsuario(id) {
   document.getElementById('editUserId').value      = id;
   document.getElementById('editUserName').value    = u.name   || '';
   document.getElementById('editUserCargo').value   = u.cargo  || '';
+  document.getElementById('editUserPerfil').value  = getPerfil(u);
   document.getElementById('editUserUsername').value= u.username;
   document.getElementById('modalUserTitle').textContent = '✏️ Editar Usuario';
   document.getElementById('editUserFields').classList.remove('hidden');
@@ -2040,7 +2065,8 @@ async function guardarCambiosUsuario() {
     if (p !== p2)     return alerta('alEditUser', 'Las contraseñas no coinciden.', 'err');
     const users = getUsers();
     if (users.find(x => x.username === uname)) return alerta('alEditUser', 'Ese nombre de usuario ya existe.', 'err');
-    const newUser = { id: Date.now(), name, cargo, username: uname, password: btoa(p), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const perfil  = (document.getElementById('newUserPerfil').value || 'usuario');
+    const newUser = { id: Date.now(), name, cargo, perfil, superadmin: perfil==='superadministrador', username: uname, password: btoa(p), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     users.push(newUser);
     setUsers(users);
     const puedeApi = navigator.onLine && (api._url() || api._gsOk());
@@ -2065,13 +2091,16 @@ async function guardarCambiosUsuario() {
 
   if (_modoModal === 'edit') {
     const name  = (document.getElementById('editUserName').value  || '').trim();
-    const cargo = (document.getElementById('editUserCargo').value || '').trim();
+    const cargo  = (document.getElementById('editUserCargo').value  || '').trim();
+    const perfil = (document.getElementById('editUserPerfil').value || 'usuario');
     if (!name) return alerta('alEditUser', 'El nombre es obligatorio.', 'err');
     users[idx].name      = name;
     users[idx].cargo     = cargo;
+    users[idx].perfil    = perfil;
+    users[idx].superadmin = perfil === 'superadministrador';
     users[idx].updatedAt = new Date().toISOString();
     setUsers(users);
-    if (getSess()?.id === id) setSess({...getSess(), name, cargo});
+    if (getSess()?.id === id) setSess({...getSess(), name, cargo, perfil});
     const puedeEdit = navigator.onLine && (api._url() || api._gsOk());
     if (puedeEdit) {
       try {
