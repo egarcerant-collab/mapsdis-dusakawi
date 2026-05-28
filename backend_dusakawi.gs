@@ -15,8 +15,9 @@
 const FILE_NAME       = 'dusakawi_registros_discapacidad.json';
 const USERS_FILE_NAME = 'dusakawi_usuarios.json';
 const FOLDER_ID       = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
+const MAX_BACKUPS     = 10;   // Máximo de copias de respaldo por archivo
 
-// ── API unificada vía GET (evita problema de redirect con POST) ─
+// ── API unificada vía GET ──────────────────────────────────────
 function doGet(e) {
   const params = e.parameter || {};
   const action = params.action;
@@ -51,6 +52,10 @@ function doGet(e) {
     } else if (action === 'checkUpload') {
       const cached = CacheService.getScriptCache().get('dusa_cert_' + params.uploadId);
       return buildResponse({ ok: true, data: cached || null });
+    } else if (action === 'listBackups') {
+      return buildResponse({ ok: true, data: listBackups() });
+    } else if (action === 'restoreBackup') {
+      return buildResponse({ ok: true, data: restoreBackup(params.fileName, params.tipo) });
     } else {
       throw new Error('Acción desconocida: ' + action);
     }
@@ -61,7 +66,7 @@ function doGet(e) {
   }
 }
 
-// ── doPost: upload de certificados y respaldo de otras acciones ─
+// ── doPost: upload de certificados ────────────────────────────
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -74,7 +79,6 @@ function doPost(e) {
       return buildResponse({ ok: true, data: url });
     }
 
-    // Otras acciones con lock
     const lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
@@ -98,19 +102,17 @@ function doPost(e) {
   }
 }
 
-// ── Upload directo desde google.script.run (sin polling) ──────
+// ── Upload directo desde google.script.run ────────────────────
 function uploadCertificadoGAS(recordId, fileName, base64Data, mimeType) {
   return saveCertificado(recordId, fileName, base64Data, mimeType);
 }
 
-// ── Guardar certificado en subcarpeta Drive ────────────────────
+// ── Guardar certificado en subcarpeta Drive ───────────────────
 function saveCertificado(recordId, fileName, base64Data, mimeType) {
   const folder = getCertificadosFolder();
   const safeName = 'cert_' + recordId + '_' + fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  // Eliminar versión previa si existe
   const iter = folder.getFilesByName(safeName);
   if (iter.hasNext()) iter.next().setTrashed(true);
-  // Crear archivo
   const decoded = Utilities.base64Decode(base64Data);
   const blob    = Utilities.newBlob(decoded, mimeType, safeName);
   const file    = folder.createFile(blob);
@@ -124,35 +126,26 @@ function getCertificadosFolder() {
   return iter.hasNext() ? iter.next() : parent.createFolder('certificados');
 }
 
-// ── Funciones llamadas desde HTML vía google.script.run ────────
+// ── Funciones expuestas a google.script.run ───────────────────
 function loadRecords() {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
-  try {
-    return JSON.stringify(getRecords());
-  } finally {
-    lock.releaseLock();
-  }
+  try { return JSON.stringify(getRecords()); }
+  finally { lock.releaseLock(); }
 }
 
 function saveRecord(recordJson) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
-  try {
-    return saveRecordSafe(JSON.parse(recordJson));
-  } finally {
-    lock.releaseLock();
-  }
+  try { return saveRecordSafe(JSON.parse(recordJson)); }
+  finally { lock.releaseLock(); }
 }
 
 function deleteRecord(id) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
-  try {
-    return deleteRecordSafe(id);
-  } finally {
-    lock.releaseLock();
-  }
+  try { return deleteRecordSafe(id); }
+  finally { lock.releaseLock(); }
 }
 
 function saveAllRecords(dataJson) {
@@ -162,20 +155,35 @@ function saveAllRecords(dataJson) {
     const records = JSON.parse(dataJson);
     saveRecords(records);
     return records.length;
-  } finally {
-    lock.releaseLock();
-  }
+  } finally { lock.releaseLock(); }
 }
 
-// ── Lógica de negocio con deduplicación por ID ─────────────────
+function loadUsersGAS() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return JSON.stringify(getUsersFromDrive()); }
+  finally { lock.releaseLock(); }
+}
+
+function saveUserGAS(userJson) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return saveUserSafe(JSON.parse(userJson)); }
+  finally { lock.releaseLock(); }
+}
+
+function deleteUserGAS(id) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return deleteUserSafe(id); }
+  finally { lock.releaseLock(); }
+}
+
+// ── Lógica de negocio ─────────────────────────────────────────
 function saveRecordSafe(record) {
   const records = getRecords();
   const idx = records.findIndex(r => String(r.id) === String(record.id));
-  if (idx >= 0) {
-    records[idx] = record;
-  } else {
-    records.push(record);
-  }
+  if (idx >= 0) { records[idx] = record; } else { records.push(record); }
   saveRecords(records);
   return records.length;
 }
@@ -186,7 +194,7 @@ function deleteRecordSafe(id) {
   return records.length;
 }
 
-// ── Acceso a la carpeta de Drive ───────────────────────────────
+// ── Acceso a carpetas de Drive ────────────────────────────────
 function getFolder() {
   try {
     return DriveApp.getFolderById(FOLDER_ID);
@@ -197,7 +205,13 @@ function getFolder() {
   }
 }
 
-// ── Leer JSON de Drive ─────────────────────────────────────────
+function getBackupsFolder() {
+  const parent = getFolder();
+  const iter   = parent.getFoldersByName('backups');
+  return iter.hasNext() ? iter.next() : parent.createFolder('backups');
+}
+
+// ── Leer registros de Drive ───────────────────────────────────
 function getRecords() {
   const folder = getFolder();
   const iter   = folder.getFilesByName(FILE_NAME);
@@ -208,7 +222,7 @@ function getRecords() {
   return [];
 }
 
-// ── Escribir JSON en Drive ─────────────────────────────────────
+// ── Guardar registros + backup automático ─────────────────────
 function saveRecords(records) {
   const folder  = getFolder();
   const iter    = folder.getFilesByName(FILE_NAME);
@@ -218,40 +232,8 @@ function saveRecords(records) {
   } else {
     folder.createFile(FILE_NAME, content, MimeType.PLAIN_TEXT);
   }
-}
-
-// ── Funciones expuestas a google.script.run ────────────────────
-// Necesarias para que el frontend las llame directamente cuando
-// se ejecuta dentro del contexto de GAS (sin necesidad de fetch).
-
-function loadUsersGAS() {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    return JSON.stringify(getUsersFromDrive());
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function saveUserGAS(userJson) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
-    return saveUserSafe(JSON.parse(userJson));
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function deleteUserGAS(id) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
-    return deleteUserSafe(id);
-  } finally {
-    lock.releaseLock();
-  }
+  // Crear backup automático
+  crearBackup('registros', content);
 }
 
 // ── Gestión de Usuarios en Drive ──────────────────────────────
@@ -279,15 +261,137 @@ function deleteUserSafe(id) {
   return users.length;
 }
 
+// ── Guardar usuarios + backup automático ──────────────────────
 function saveUsersFile(users) {
   const folder  = getFolder();
   const iter    = folder.getFilesByName(USERS_FILE_NAME);
   const content = JSON.stringify(users, null, 2);
   if (iter.hasNext()) { iter.next().setContent(content); }
   else { folder.createFile(USERS_FILE_NAME, content, MimeType.PLAIN_TEXT); }
+  // Crear backup automático
+  crearBackup('usuarios', content);
 }
 
-// ── Respuesta HTTP JSON ────────────────────────────────────────
+// ── Sistema de Backups ────────────────────────────────────────
+function crearBackup(tipo, content) {
+  try {
+    const folder    = getBackupsFolder();
+    const zona      = 'America/Bogota';
+    const ahora     = new Date();
+    const formatter = Utilities.formatDate(ahora, zona, 'yyyyMMdd_HHmmss');
+    const nombre    = 'backup_' + tipo + '_' + formatter + '.json';
+
+    // Crear archivo de backup
+    folder.createFile(nombre, content, MimeType.PLAIN_TEXT);
+
+    // Limpiar backups antiguos — conservar solo los últimos MAX_BACKUPS
+    limpiarBackupsAntiguos(folder, tipo);
+  } catch(e) {
+    // El backup nunca debe interrumpir el guardado principal
+    Logger.log('Error en backup: ' + e.message);
+  }
+}
+
+function limpiarBackupsAntiguos(folder, tipo) {
+  try {
+    const iter  = folder.getFilesByName('backup_' + tipo + '_*');
+    // getFilesByName con wildcard no funciona, usamos búsqueda por prefijo
+    const todos = [];
+    const allFiles = folder.getFiles();
+    while (allFiles.hasNext()) {
+      const f = allFiles.next();
+      if (f.getName().startsWith('backup_' + tipo + '_')) {
+        todos.push({ file: f, date: f.getDateCreated() });
+      }
+    }
+    // Ordenar de más nuevo a más antiguo
+    todos.sort((a, b) => b.date - a.date);
+    // Eliminar los que superan el máximo
+    for (let i = MAX_BACKUPS; i < todos.length; i++) {
+      todos[i].file.setTrashed(true);
+    }
+  } catch(e) {
+    Logger.log('Error limpiando backups: ' + e.message);
+  }
+}
+
+// ── Listar backups disponibles ────────────────────────────────
+function listBackups() {
+  const folder  = getBackupsFolder();
+  const allFiles = folder.getFiles();
+  const lista   = [];
+  while (allFiles.hasNext()) {
+    const f = allFiles.next();
+    const name = f.getName();
+    if (name.startsWith('backup_')) {
+      lista.push({
+        nombre:   name,
+        tipo:     name.includes('_registros_') ? 'registros' : 'usuarios',
+        fecha:    f.getDateCreated().toISOString(),
+        tamanio:  f.getSize(),
+        id:       f.getId()
+      });
+    }
+  }
+  // Ordenar de más nuevo a más antiguo
+  lista.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  return lista;
+}
+
+// ── Restaurar desde backup ────────────────────────────────────
+function restoreBackup(fileName, tipo) {
+  const folder   = getBackupsFolder();
+  const iter     = folder.getFilesByName(fileName);
+  if (!iter.hasNext()) throw new Error('Archivo de backup no encontrado: ' + fileName);
+
+  const content  = iter.next().getBlob().getDataAsString('UTF-8');
+  const datos    = JSON.parse(content);
+
+  if (tipo === 'registros') {
+    // Antes de restaurar, hacer backup del estado actual
+    crearBackup('registros_prerestauracion', JSON.stringify(getRecords(), null, 2));
+    saveRecords(datos);
+    return { tipo: 'registros', total: datos.length };
+  } else if (tipo === 'usuarios') {
+    crearBackup('usuarios_prerestauracion', JSON.stringify(getUsersFromDrive(), null, 2));
+    saveUsersFile(datos);
+    return { tipo: 'usuarios', total: datos.length };
+  } else {
+    throw new Error('Tipo de backup desconocido: ' + tipo);
+  }
+}
+
+// ── Trigger diario de backup ──────────────────────────────────
+// Ejecutar manualmente UNA VEZ para activar el respaldo automático diario:
+//   En GAS → Ejecutar → crearTriggerDiario
+function crearTriggerDiario() {
+  // Eliminar triggers previos del mismo tipo para no duplicar
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'backupDiario') ScriptApp.deleteTrigger(t);
+  });
+  // Crear trigger a las 2 AM hora Colombia todos los días
+  ScriptApp.newTrigger('backupDiario')
+    .timeBased()
+    .atHour(2)
+    .everyDays(1)
+    .inTimezone('America/Bogota')
+    .create();
+  Logger.log('✅ Trigger diario creado: backup a las 2 AM (Bogotá)');
+}
+
+function backupDiario() {
+  try {
+    const registros = getRecords();
+    const usuarios  = getUsersFromDrive();
+    crearBackup('registros', JSON.stringify(registros, null, 2));
+    crearBackup('usuarios',  JSON.stringify(usuarios,  null, 2));
+    Logger.log('✅ Backup diario completado: ' + registros.length + ' registros, ' + usuarios.length + ' usuarios');
+  } catch(e) {
+    Logger.log('❌ Error en backup diario: ' + e.message);
+  }
+}
+
+// ── Respuesta HTTP JSON ───────────────────────────────────────
 function buildResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))

@@ -576,6 +576,24 @@ tr:hover td{background:#fafafa}
         <div id="adminUserList"></div>
       </div>
     </div>
+
+    <!-- ── PANEL DE BACKUPS ─────────────────────────────────── -->
+    <div class="card">
+      <div class="sh" style="background:#2E7D32;color:#fff">🗄 Copias de Respaldo (Drive)</div>
+      <div class="sb">
+        <p style="font-size:0.82rem;color:#555;margin-bottom:12px">
+          El sistema crea automáticamente una copia de seguridad cada vez que se guardan registros o usuarios.
+          Se conservan las últimas <strong>10 copias</strong> por tipo en la carpeta <code>backups/</code> dentro de Drive.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-b btn-sm" onclick="verBackups()">📋 Ver copias disponibles</button>
+          <button class="btn btn-sm" style="background:#FF8F00;color:#fff" onclick="backupManualAhora()">💾 Crear copia ahora</button>
+        </div>
+        <div id="alBackup"></div>
+        <div id="listaBackups" style="margin-top:8px"></div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="sh sh-blue">⚙ Configuración del Servidor (Drive)</div>
       <div class="sb">
@@ -748,6 +766,11 @@ const api = {
     if (this._gsOk()) return new Promise((res, rej) =>
       google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveRecord(JSON.stringify(record)));
     if (!this._url()) return Promise.reject(new Error('Configure la URL del servidor en Administración'));
+    // Si el registro es grande (>1500 chars JSON), usar POST para evitar límite de URL
+    const recJson = JSON.stringify(record);
+    if (recJson.length > 1500) {
+      return this._post({ action: 'save', record });
+    }
     return this._get({ action: 'save', record });
   },
   remove(id) {
@@ -1000,20 +1023,27 @@ async function sincronizar() {
       await api.save(soloLocal[i]);
     }
 
-    // 4. Bajar estado final consolidado
-    if (soloLocal.length > 0) {
-      setSyncStatus('carg', 'Verificando...');
-      driveRecs = await api.load();
-    }
+    // 4. Bajar estado final consolidado desde Drive
+    setSyncStatus('carg', 'Verificando...');
+    driveRecs = await api.load();
 
-    // 5. Actualizar local con la versión de Drive (fuente única de verdad)
-    setLocal(driveRecs);
+    // 5. Merge final: Drive + registros locales que NO llegaron a Drive
+    //    (evita perder registros si api.save() falló en paso 3)
+    const driveIdsFinal = new Set(driveRecs.map(r => String(r.id)));
+    const quedanLocal   = getLocal().filter(r => !driveIdsFinal.has(String(r.id)));
+    const mergedFinal   = [...driveRecs, ...quedanLocal];
+
+    setLocal(mergedFinal);
     actualizarDash();
     if (document.getElementById('vRecs') &&
         !document.getElementById('vRecs').classList.contains('hidden')) {
-      renderRecs(driveRecs);
+      renderRecs(mergedFinal);
     }
-    setSyncStatus('ok', `Drive: ${driveRecs.length} registro(s)`);
+    const pendMsg = quedanLocal.length > 0
+      ? ` (${quedanLocal.length} pendiente(s) de subir)`
+      : '';
+    setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
+      `Drive: ${driveRecs.length} registro(s)${pendMsg}`);
 
   } catch (err) {
     setSyncStatus('err', 'Error: ' + (err.message || String(err)));
