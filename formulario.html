@@ -454,7 +454,24 @@ tr:hover td{background:#fafafa}
                  onchange="previsualizarCertificado(this)"
                  style="width:100%;padding:7px;border:1.5px dashed #1B6B2A;border-radius:6px;background:#f8fff8;cursor:pointer">
           <div id="prevCertificado" style="margin-top:8px"></div>
-          <input type="hidden" name="certificadoUrl" id="certificadoUrl">
+          <!-- Campo para pegar URL manualmente (Drive o Supabase) -->
+          <div style="margin-top:8px">
+            <label style="font-size:0.76rem;color:#888;font-weight:600">
+              ↳ O pegue aquí el enlace del archivo ya subido a Drive
+            </label>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <input type="text" id="certificadoUrl" name="certificadoUrl"
+                placeholder="https://drive.google.com/file/d/... o https://...supabase.co/..."
+                style="font-size:0.78rem;border:1.5px solid #E8A000;border-radius:6px;
+                       padding:7px 10px;background:#FFFDE7;flex:1">
+              <button type="button" class="btn btn-sm"
+                style="background:#E8A000;color:#fff;white-space:nowrap"
+                onclick="(function(){var u=document.getElementById('certificadoUrl').value.trim();
+                  if(u)window.open(u,'_blank');else alert('Pegue primero el enlace del archivo.');})()">
+                👁 Ver
+              </button>
+            </div>
+          </div>
         </div>
         <div class="fg"><label>Captación</label>
           <input type="text" name="captacion" placeholder="Mecanismo de captación"></div>
@@ -831,6 +848,22 @@ const supa = {
     });
     if (!r.ok) throw new Error('Supabase ' + r.status);
   },
+  // Busca automáticamente el certificado en Supabase Storage por recordId
+  async findCertificado(recordId) {
+    try {
+      const r = await fetch(SUPA_URL + '/storage/v1/object/list/certificados', {
+        method: 'POST',
+        headers: this._h(),
+        body: JSON.stringify({ prefix: 'cert_' + recordId + '_', limit: 1, sortBy: { column: 'created_at', order: 'desc' } })
+      });
+      if (!r.ok) return null;
+      const files = await r.json();
+      if (files && files.length > 0 && files[0].name) {
+        return SUPA_URL + '/storage/v1/object/public/certificados/' + files[0].name;
+      }
+    } catch(_) {}
+    return null;
+  },
   async deleteUser(id) {
     const r = await fetch(SUPA_URL + '/rest/v1/usuarios?id=eq.' + id, { method: 'DELETE', headers: this._h() });
     if (!r.ok) throw new Error('Supabase ' + r.status);
@@ -1045,6 +1078,51 @@ function actualizarEstadoConexion() {
 window.addEventListener('online',  actualizarEstadoConexion);
 window.addEventListener('offline', actualizarEstadoConexion);
 
+// ── Buscar certificados faltantes automáticamente ─────────────
+async function autoCompletarCertificados() {
+  const local = getLocal();
+  const sinUrl = local.filter(r => r.certificadoDisc === 'Sí' && !r.certificadoUrl);
+  if (sinUrl.length === 0) return;
+
+  let actualizados = 0;
+  for (const r of sinUrl) {
+    // 1. Buscar en Supabase Storage
+    const url = await supa.findCertificado(String(r.id));
+    if (url) {
+      r.certificadoUrl = url;
+      actualizados++;
+      // Guardar en local y en Supabase
+      const idx = local.findIndex(x => String(x.id) === String(r.id));
+      if (idx >= 0) local[idx] = r;
+      api.save(r).catch(() => {});
+      continue;
+    }
+    // 2. Fallback: buscar en Drive via GAS
+    if (api._gsOk()) {
+      await new Promise(res => {
+        google.script.run
+          .withSuccessHandler(driveUrl => {
+            if (driveUrl) {
+              r.certificadoUrl = driveUrl;
+              actualizados++;
+              const idx = local.findIndex(x => String(x.id) === String(r.id));
+              if (idx >= 0) local[idx] = r;
+              api.save(r).catch(() => {});
+            }
+            res();
+          })
+          .withFailureHandler(res)
+          .buscarCertificadoGAS(String(r.id));
+      });
+    }
+  }
+  if (actualizados > 0) {
+    setLocal(local);
+    renderRecs(local);
+    console.log('✅ Certificados encontrados automáticamente:', actualizados);
+  }
+}
+
 // ── Cola de sincronización offline ────────────────────────────
 const K_QUEUE = 'dusa_queue';
 const getQueue  = () => JSON.parse(localStorage.getItem(K_QUEUE) || '[]');
@@ -1200,6 +1278,9 @@ async function sincronizar() {
       : '';
     setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
       `Drive: ${driveRecs.length} registro(s)${pendMsg}`);
+
+    // Buscar automáticamente certificados faltantes en Supabase Storage / Drive
+    autoCompletarCertificados().catch(() => {});
 
   } catch (err) {
     setSyncStatus('err', 'Error: ' + (err.message || String(err)));
@@ -1546,6 +1627,26 @@ function cargarParaCompletar(id) {
   // Edad
   const fnEl = form.querySelector('[name="fechaNacimiento"]');
   if (fnEl && r.fechaNacimiento) calcEdad(fnEl);
+  // Buscar certificado automáticamente si tiene "Sí" pero no tiene URL
+  if (r.certificadoDisc === 'Sí' && !r.certificadoUrl) {
+    const urlInput = document.getElementById('certificadoUrl');
+    const prev     = document.getElementById('prevCertificado');
+    if (prev) prev.innerHTML = '<div style="font-size:0.78rem;color:#888;padding:4px">🔍 Buscando certificado...</div>';
+    supa.findCertificado(String(r.id)).then(url => {
+      if (url) {
+        if (urlInput) urlInput.value = url;
+        if (prev) prev.innerHTML = `<div style="background:#E8F5E9;border-radius:6px;padding:8px;font-size:0.82rem">
+          ✅ Certificado encontrado:
+          <a href="${url}" target="_blank" style="color:#1565C0;font-weight:600">Ver archivo</a>
+          <span style="color:#888;display:block;font-size:0.75rem">Se guardará al actualizar el registro</span>
+        </div>`;
+      } else {
+        if (prev) prev.innerHTML = '<div style="font-size:0.78rem;color:#bbb;padding:4px">Sin certificado cargado aún</div>';
+      }
+    }).catch(() => {
+      if (prev) prev.innerHTML = '';
+    });
+  }
   // Banner modo edición
   const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ');
   document.getElementById('bannerDuplic').innerHTML = `
@@ -1734,7 +1835,9 @@ function renderRecs(recs) {
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
         <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
-        ${r.certificadoUrl ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado de discapacidad">📄</a>` : ''}
+        ${r.certificadoUrl
+          ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado cargado">📄</a>`
+          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado cargado">📄</span>`}
         ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
         ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
