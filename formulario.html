@@ -239,7 +239,7 @@ tr:hover td{background:#fafafa}
     <button class="nb" onclick="exportarCSV()">⬇ Exportar CSV</button>
     <button class="nb" onclick="document.getElementById('fImport').click()">⬆ Importar JSON</button>
     <input type="file" id="fImport" accept=".json" class="hidden" onchange="importarJSON(event)">
-    <button class="nb nb-r" onclick="sincronizar()">🔄 Sincronizar</button>
+<button class="nb nb-r" onclick="sincronizar()">🔄 Sincronizar</button>
     <button class="nb" onclick="doLogout()">🚪 Salir</button>
   </div>
 
@@ -493,7 +493,8 @@ tr:hover td{background:#fafafa}
             <option value="No se identifica">No se identifica</option>
             <option value="Por nacimiento">Por nacimiento</option></select></div>
         <div class="fg s2" id="dSubAdq" style="display:none"><label>Sub-causa — Adquirida</label>
-          <select name="subCausaAdquirida"><option value="">-- Seleccione --</option>
+          <select name="subCausaAdquirida" id="selSubAdq" onchange="togSubCausa(this,'dOtroAdq','otroSubAdq')">
+            <option value="">-- Seleccione --</option>
             <option>Enfermedad General</option><option>Enfermedad Laboral</option>
             <option>Accidente de Tránsito</option><option>Accidente en el Hogar</option>
             <option>Accidente en el Centro Educativo</option><option>Accidente de Trabajo</option>
@@ -501,13 +502,28 @@ tr:hover td{background:#fafafa}
             <option>Intoxicación</option><option>Envejecimiento</option>
             <option>Consumo de Sustancias Psicoactivas</option><option>Lesión Autoinfligida</option>
             <option>Conflicto Armado</option><option>Violencia Intrafamiliar</option>
-            <option>Violencia por Delincuencia Común</option></select></div>
+            <option>Violencia por Delincuencia Común</option>
+            <option value="Otros">✏️ Otros — especifique</option>
+          </select>
+          <div id="dOtroAdq" style="display:none;margin-top:8px">
+            <input type="text" id="otroSubAdq" placeholder="Escriba la sub-causa específica..."
+              maxlength="200" style="border:1.5px solid #E8A000;background:#FFFDE7">
+          </div>
+        </div>
         <div class="fg s2" id="dSubNac" style="display:none"><label>Sub-causa — Por Nacimiento</label>
-          <select name="subCausaNacimiento"><option value="">-- Seleccione --</option>
+          <select name="subCausaNacimiento" id="selSubNac" onchange="togSubCausa(this,'dOtroNac','otroSubNac')">
+            <option value="">-- Seleccione --</option>
             <option>Alteración Genética o Hereditaria</option>
             <option>Alteración del Desarrollo Embrionario</option>
             <option>Complicaciones durante el Parto</option>
-            <option>Condiciones de Salud de la Madre durante el Embarazo</option></select></div>
+            <option>Condiciones de Salud de la Madre durante el Embarazo</option>
+            <option value="Otros">✏️ Otros — especifique</option>
+          </select>
+          <div id="dOtroNac" style="display:none;margin-top:8px">
+            <input type="text" id="otroSubNac" placeholder="Escriba la sub-causa específica..."
+              maxlength="200" style="border:1.5px solid #E8A000;background:#FFFDE7">
+          </div>
+        </div>
       </div></div></div>
 
       <div class="card"><div class="sh sh-dark">📄 10. Atención en Salud</div><div class="sb"><div class="g2">
@@ -762,15 +778,23 @@ const supa = {
   async loadRecords() {
     const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?select=registro&order=id.asc', { headers: this._h() });
     if (!r.ok) throw new Error('Supabase ' + r.status);
-    return (await r.json()).map(x => x.registro);
+    const rows = await r.json();
+    // Deduplicar por registro.id (por si hay filas repetidas en la DB)
+    const seen = new Set();
+    return rows.map(x => x.registro).filter(rec => {
+      const key = String(rec?.id ?? '');
+      if (!key || seen.has(key)) return false;
+      seen.add(key); return true;
+    });
   },
   async saveRecord(rec) {
-    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad', {
+    // on_conflict=id → upsert explícito usando la columna id como clave de conflicto
+    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?on_conflict=id', {
       method: 'POST',
       headers: { ...this._h(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ id: rec.id, registro: rec })
+      body: JSON.stringify({ id: Number(rec.id), registro: rec })
     });
-    if (!r.ok) throw new Error('Supabase ' + r.status);
+    if (!r.ok) throw new Error('Supabase save ' + r.status);
   },
   async deleteRecord(id) {
     const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?id=eq.' + id, { method: 'DELETE', headers: this._h() });
@@ -932,16 +956,45 @@ const api = {
       img.src = url;
     });
   },
-  uploadCertificado(recordId, file, onProgress) {
+  async uploadCertificado(recordId, file, onProgress) {
+    // 1. Comprimir si es imagen (max 1400px, JPEG 80%)
+    file = await this._comprimirSiImagen(file);
+
+    // 2. ── Supabase Storage: upload directo (2-3 segundos) ─────
+    try {
+      if (onProgress) onProgress(2, 10);
+      const safeName = 'cert_' + recordId + '_' + Date.now() + '_' +
+                       file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const r = await fetch(
+        SUPA_URL + '/storage/v1/object/certificados/' + safeName,
+        {
+          method: 'POST',
+          headers: {
+            'apikey':        SUPA_KEY,
+            'Authorization': 'Bearer ' + SUPA_KEY,
+            'Content-Type':  file.type || 'application/octet-stream',
+            'x-upsert':      'true'
+          },
+          body: file
+        }
+      );
+      if (r.ok) {
+        if (onProgress) onProgress(10, 10);
+        return SUPA_URL + '/storage/v1/object/public/certificados/' + safeName;
+      }
+      const errTxt = await r.text().catch(() => r.status);
+      console.warn('Supabase Storage (' + r.status + '):', errTxt);
+    } catch (supaErr) {
+      console.warn('Supabase Storage error:', supaErr.message);
+    }
+
+    // 3. ── Fallback GAS / Drive (si Supabase falla) ────────────
     return new Promise((res, rej) => {
-      // Comprimir imagen antes de leer como base64
-      this._comprimirSiImagen(file).then(fileOpt => {
-      file = fileOpt;
       const reader = new FileReader();
       reader.onload = async ev => {
         try {
           const b64 = ev.target.result.split(',')[1];
-          // ── GAS context: llamada directa, sin polling ──────────
+          // GAS context: llamada directa sin polling
           if (this._gsOk()) {
             if (onProgress) onProgress(1, 10);
             google.script.run
@@ -950,23 +1003,20 @@ const api = {
               .uploadCertificadoGAS(String(recordId), file.name, b64, file.type);
             return;
           }
-          // ── GitHub Pages / Web: POST + polling optimizado ──────
+          // GitHub Pages / Web: POST + polling
           if (!this._url()) { rej(new Error('Sin URL de servidor')); return; }
           const uploadId = 'up' + Date.now();
-          const payload  = JSON.stringify({
-            action: 'uploadCertificado', uploadId,
-            recordId: String(recordId), fileName: file.name,
-            base64Data: b64, mimeType: file.type
-          });
           await fetch(this._url(), {
             method: 'POST', mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain' },
-            body: payload
+            body: JSON.stringify({
+              action: 'uploadCertificado', uploadId,
+              recordId: String(recordId), fileName: file.name,
+              base64Data: b64, mimeType: file.type
+            })
           });
           if (onProgress) onProgress(1, 20);
-          // Espera inicial 5s: GAS necesita tiempo para arrancar y subir a Drive
           await new Promise(r => setTimeout(r, 5000));
-          // Polling cada 2s — máximo 20 intentos (~40s adicionales)
           for (let i = 2; i <= 20; i++) {
             if (onProgress) onProgress(i, 20);
             try {
@@ -975,12 +1025,11 @@ const api = {
             } catch (_) {}
             if (i < 20) await new Promise(r => setTimeout(r, 2000));
           }
-          rej(new Error('Tiempo de espera agotado. Intente de nuevo con conexión estable.'));
+          rej(new Error('Tiempo de espera agotado. Intente de nuevo.'));
         } catch (err) { rej(err); }
       };
       reader.onerror = rej;
       reader.readAsDataURL(file);
-      }); // fin _comprimirSiImagen
     });
   }
 };
@@ -1000,6 +1049,21 @@ window.addEventListener('offline', actualizarEstadoConexion);
 const K_QUEUE = 'dusa_queue';
 const getQueue  = () => JSON.parse(localStorage.getItem(K_QUEUE) || '[]');
 const setQueue  = q  => localStorage.setItem(K_QUEUE, JSON.stringify(q));
+
+// ── Tombstone: IDs eliminados (evita que otros dispositivos los resuciten) ─
+const K_DELETED = 'dusa_deleted';
+const getDeleted = () => JSON.parse(localStorage.getItem(K_DELETED) || '{}');
+const setDeleted = d  => localStorage.setItem(K_DELETED, JSON.stringify(d));
+
+function markDeleted(id) {
+  const d = getDeleted();
+  d[String(id)] = Date.now();
+  // Purgar entradas > 30 días
+  const maxAge = 30 * 24 * 3600 * 1000;
+  Object.keys(d).forEach(k => { if (Date.now() - d[k] > maxAge) delete d[k]; });
+  setDeleted(d);
+}
+const wasDeleted = id => !!getDeleted()[String(id)];
 
 function encolarRegistro(rec) {
   const q = getQueue(); q.push(rec); setQueue(q);
@@ -1102,9 +1166,10 @@ async function sincronizar() {
     let driveRecs = await api.load();
 
     // 3. Detectar registros locales ausentes en Drive y subirlos en orden
+    //    (excluir IDs que fueron eliminados — tombstone evita resurrección)
     const driveIds = new Set(driveRecs.map(r => String(r.id)));
     const soloLocal = getLocal()
-      .filter(r => !driveIds.has(String(r.id)))
+      .filter(r => !driveIds.has(String(r.id)) && !wasDeleted(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
     for (let i = 0; i < soloLocal.length; i++) {
@@ -1116,10 +1181,12 @@ async function sincronizar() {
     setSyncStatus('carg', 'Verificando...');
     driveRecs = await api.load();
 
-    // 5. Merge final: Drive + registros locales que NO llegaron a Drive
-    //    (evita perder registros si api.save() falló en paso 3)
+    // 5. Merge final: Drive + registros locales pendientes (no eliminados)
     const driveIdsFinal = new Set(driveRecs.map(r => String(r.id)));
-    const quedanLocal   = getLocal().filter(r => !driveIdsFinal.has(String(r.id)));
+    const quedanLocal   = getLocal().filter(
+      r => !driveIdsFinal.has(String(r.id)) && !wasDeleted(String(r.id))
+    );
+    // Purgar del local cualquier registro que Drive ya eliminó
     const mergedFinal   = [...driveRecs, ...quedanLocal];
 
     setLocal(mergedFinal);
@@ -1310,6 +1377,19 @@ function togComp(sel) {
 function togOrigen(sel) {
   document.getElementById('dSubAdq').style.display = sel.value==='Adquirida'?'':'none';
   document.getElementById('dSubNac').style.display = sel.value==='Por nacimiento'?'':'none';
+  // Ocultar y limpiar campos "Otros" al cambiar el origen
+  ['dOtroAdq','dOtroNac'].forEach(id => {
+    const d = document.getElementById(id); if (d) d.style.display = 'none';
+  });
+  const oa = document.getElementById('otroSubAdq'); if (oa) oa.value = '';
+  const on = document.getElementById('otroSubNac'); if (on) on.value = '';
+}
+// Mostrar/ocultar campo de texto libre cuando se elige "Otros"
+function togSubCausa(sel, divId, inputId) {
+  const show = sel.value === 'Otros';
+  document.getElementById(divId).style.display = show ? '' : 'none';
+  if (!show) { const inp = document.getElementById(inputId); if (inp) inp.value = ''; }
+  if (show)  { const inp = document.getElementById(inputId); if (inp) inp.focus(); }
 }
 function limpiarFormCampos() {
   if (!confirm('¿Limpiar todos los campos?')) return;
@@ -1318,7 +1398,9 @@ function limpiarFormCampos() {
   document.getElementById('fFechaReg').value = hoy();
   document.getElementById('fRegPor').value   = getSess()?.username||'';
   document.getElementById('selMuni').innerHTML = '<option value="">-- Seleccione departamento --</option>';
-  ['dSysAf','dTiComp','dSubAdq','dSubNac','dPuebloIndigena','dMultiple','dCertificado'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  ['dSysAf','dTiComp','dSubAdq','dSubNac','dOtroAdq','dOtroNac','dPuebloIndigena','dMultiple','dCertificado'].forEach(id=>{ const d=document.getElementById(id); if(d) d.style.display='none'; });
+  const _oa=document.getElementById('otroSubAdq'); if(_oa) _oa.value='';
+  const _on=document.getElementById('otroSubNac'); if(_on) _on.value='';
   document.querySelectorAll('#dMultiple input[type="checkbox"]').forEach(c=>c.checked=false);
   document.getElementById('discapacidadesMultiple').value='';
   document.getElementById('resumenMultiple').textContent='';
@@ -1432,9 +1514,33 @@ function cargarParaCompletar(id) {
       document.getElementById('certificadoUrl').value = r.certificadoUrl;
       document.getElementById('prevCertificado').innerHTML =
         `<div style="padding:8px;background:#E8F5E9;border-radius:6px;font-size:0.82rem;margin-top:6px">
-          ✅ Certificado existente: <a href="${r.certificadoUrl}" target="_blank" style="color:#1565C0">Ver en Drive</a>
+          ✅ Certificado existente: <a href="${r.certificadoUrl}" target="_blank" style="color:#1565C0">Ver certificado</a>
           <span style="color:#888;display:block;font-size:0.78rem">Sube un archivo nuevo solo si deseas reemplazarlo</span>
         </div>`;
+    }
+  }
+  // Sub-causa Adquirida: si el valor guardado no está en las opciones del select → "Otros"
+  if (r.subCausaAdquirida) {
+    const selAdq = document.getElementById('selSubAdq');
+    if (selAdq) {
+      const opcAdq = [...selAdq.options].map(o => o.value).filter(Boolean);
+      if (!opcAdq.includes(r.subCausaAdquirida)) {
+        selAdq.value = 'Otros';
+        document.getElementById('dOtroAdq').style.display = '';
+        document.getElementById('otroSubAdq').value = r.subCausaAdquirida;
+      }
+    }
+  }
+  // Sub-causa Nacimiento: igual
+  if (r.subCausaNacimiento) {
+    const selNac = document.getElementById('selSubNac');
+    if (selNac) {
+      const opcNac = [...selNac.options].map(o => o.value).filter(Boolean);
+      if (!opcNac.includes(r.subCausaNacimiento)) {
+        selNac.value = 'Otros';
+        document.getElementById('dOtroNac').style.display = '';
+        document.getElementById('otroSubNac').value = r.subCausaNacimiento;
+      }
     }
   }
   // Edad
@@ -1489,6 +1595,15 @@ async function guardar(e) {
   const fd = new FormData(document.getElementById('frmReg'));
   const rec = {};
   for (const [k, v] of fd.entries()) rec[k] = v.trim();
+  // Si el usuario eligió "Otros" en sub-causa, guardar el texto escrito
+  if (rec.subCausaAdquirida === 'Otros') {
+    const txt = (document.getElementById('otroSubAdq')?.value || '').trim();
+    rec.subCausaAdquirida = txt || 'Otros';
+  }
+  if (rec.subCausaNacimiento === 'Otros') {
+    const txt = (document.getElementById('otroSubNac')?.value || '').trim();
+    rec.subCausaNacimiento = txt || 'Otros';
+  }
 
   if (_editandoExistente !== null) {
     // ── MODO ACTUALIZACIÓN ──────────────────────────────────────
@@ -1514,14 +1629,25 @@ async function guardar(e) {
       rec.certificadoUrl = original.certificadoUrl;
     }
     const local = getLocal();
-    const idx = local.findIndex(r => r.id === _editandoExistente);
-    if (idx >= 0) local[idx] = rec; else local.push(rec);
+    // Comparación con String() para evitar duplicados por tipo number vs string
+    const idx = local.findIndex(r => String(r.id) === String(_editandoExistente));
+    if (idx >= 0) {
+      local[idx] = rec;
+    } else {
+      // Si no se encontró en local (raro), buscar si ya existe por identificación
+      const dupIdx = local.findIndex(r => r.identificacion === rec.identificacion && String(r.id) !== String(rec.id));
+      if (dupIdx >= 0) local[dupIdx] = rec;  // Reemplazar el duplicado
+      else local.push(rec);
+    }
     setLocal(local); actualizarDash();
     alerta('alForm', '✅ Registro actualizado correctamente.', 'ok');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setSyncStatus('carg', 'Sincronizando...');
-    try { const t = await api.save(rec); setSyncStatus('ok', 'Drive: ' + t + ' registro(s)'); }
-    catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
+    try {
+      await api.save(rec);
+      // Eliminar posibles duplicados en Supabase con mismo documento pero diferente id
+      setSyncStatus('ok', 'Actualizado en Drive ✓');
+    } catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
 
   } else {
     // ── MODO NUEVO REGISTRO ─────────────────────────────────────
@@ -1607,6 +1733,8 @@ function renderRecs(recs) {
       <td>${r.regimen||'-'}</td><td>${rehab}</td><td>${fReg}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
+        <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
+        ${r.certificadoUrl ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado de discapacidad">📄</a>` : ''}
         ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
         ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
@@ -1631,6 +1759,7 @@ async function eliminar(id) {
     return;
   }
   if (!confirm('¿Eliminar este registro permanentemente?')) return;
+  markDeleted(id);  // tombstone: evita resurrección en otros dispositivos
   const nuevos = getLocal().filter(r => r.id !== id);
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
   setSyncStatus('carg', 'Eliminando en Drive...');
@@ -1665,26 +1794,60 @@ function verDetalle(id) {
   for (const [k,v] of Object.entries(r)) {
     if (k==='id'||k==='nota'||k==='notaEditadaPor'||k==='notaEditadaEn'||!v||v==='') continue;
     if (k==='certificadoUrl') {
-      const fid = (v.match(/\/d\/([a-zA-Z0-9_-]+)\//) || [])[1] || '';
-      const previewUrl = fid ? `https://drive.google.com/file/d/${fid}/preview` : v;
-      const thumbUrl   = fid ? `https://drive.google.com/thumbnail?id=${fid}&sz=w320` : '';
+      const isSupabase = v.includes('supabase.co/storage');
+      const fid = !isSupabase ? ((v.match(/\/d\/([a-zA-Z0-9_-]+)\//) || [])[1] || '') : '';
+      const cleanUrl = v.split('?')[0].toLowerCase();
+      const isImg  = /\.(jpg|jpeg|png|gif|webp|bmp)$/.test(cleanUrl);
+      const isPdf  = /\.pdf$/.test(cleanUrl);
+      const uid    = 'cert_' + String(r.id);
+
+      // Determinar URL de la miniatura
+      let imgSrc = '';
+      if (isSupabase && !isPdf) imgSrc = v;   // Supabase imagen (o desconocido → intentar img)
+      else if (fid)             imgSrc = 'https://drive.google.com/thumbnail?id=' + fid + '&sz=w480';
+
+      let previewHtml;
+      if (imgSrc) {
+        // ── Imagen con carga diferida via data-* (sin <script> en innerHTML) ──
+        previewHtml = `
+          <div class="cert-img-wrap" data-src="${imgSrc}" data-url="${v}" data-pdf="${isPdf}"
+               id="${uid}"
+               style="border:1.5px solid #DEE2E6;border-radius:10px;overflow:hidden;background:#f5f5f5;
+                      min-height:90px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <span style="color:#bbb;font-size:0.8rem">⏳ Cargando certificado...</span>
+          </div>
+          <div style="margin-top:7px;font-size:0.8rem;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <a href="${v}" target="_blank" style="color:#1565C0;font-weight:600">🔗 ${isPdf?'Abrir PDF':'Abrir imagen'}</a>
+            <span style="color:#ccc">|</span>
+            <span style="color:#aaa;font-size:0.75rem">toca la imagen para ampliar</span>
+          </div>`;
+
+      } else if (isPdf && (isSupabase || fid)) {
+        const iframeSrc = fid ? 'https://drive.google.com/file/d/' + fid + '/preview' : v;
+        previewHtml = `
+          <div style="border:1.5px solid #DEE2E6;border-radius:10px;overflow:hidden;background:#f5f5f5">
+            <iframe src="${iframeSrc}" style="width:100%;height:280px;border:none;display:block"
+              title="Vista previa PDF"></iframe>
+          </div>
+          <div style="margin-top:7px;font-size:0.8rem">
+            <a href="${v}" target="_blank" style="color:#1565C0;font-weight:600">📄 Abrir / Descargar PDF</a>
+          </div>`;
+
+      } else {
+        previewHtml = `
+          <div style="border:1.5px solid #DEE2E6;border-radius:10px;background:#f5f5f5;
+               text-align:center;padding:22px 10px">
+            <div style="font-size:3rem;margin-bottom:8px">${isPdf?'📄':'🖼'}</div>
+            <a href="${v}" target="_blank"
+               style="display:inline-block;background:#1565C0;color:#fff;padding:10px 22px;
+                      border-radius:8px;font-weight:700;font-size:0.88rem;text-decoration:none">
+              Ver certificado</a>
+          </div>`;
+      }
+
       html += `<div class="det-item s2">
         <div class="det-label">${LABELS[k]||k}</div>
-        <div class="det-val" style="margin-top:6px">
-          ${fid ? `
-          <div style="border:1px solid #DEE2E6;border-radius:8px;overflow:hidden;background:#f5f5f5;max-width:100%">
-            <img src="${thumbUrl}" alt="Miniatura certificado"
-              style="width:100%;max-height:220px;object-fit:contain;display:block;cursor:pointer"
-              onclick="window.open('${v}','_blank')"
-              onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-            <iframe src="${previewUrl}" style="display:none;width:100%;height:220px;border:none"
-              allow="autoplay" onload="this.style.display='block'"></iframe>
-          </div>
-          <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-            <a href="${v}" target="_blank" style="color:#1565C0;font-weight:600;font-size:0.82rem">📄 Abrir en Drive</a>
-            <span style="color:#bbb;font-size:0.75rem">| clic en imagen para ampliar</span>
-          </div>` : `<a href="${v}" target="_blank" style="color:#1565C0;font-weight:600">📄 Ver certificado en Drive</a>`}
-        </div>
+        <div class="det-val" style="margin-top:6px">${previewHtml}</div>
       </div>`;
     } else {
       html += `<div class="det-item"><div class="det-label">${LABELS[k]||k}</div><div class="det-val">${v}</div></div>`;
@@ -1722,6 +1885,199 @@ function verDetalle(id) {
     <button class="btn btn-sm btn-ol" onclick="cerrarModal()">Cerrar</button></div>`;
   document.getElementById('modalCont').innerHTML = html;
   document.getElementById('modalBg').classList.remove('hidden');
+  // Inicializar miniaturas de certificado (no se pueden usar <script> dentro de innerHTML)
+  _initCertPreviews();
+}
+
+// ── Carnet de paciente ────────────────────────────────────────
+function verCarnet(id) {
+  const r = getLocal().find(x => String(x.id) === String(id)); if (!r) return;
+  const nom = [r.primerNombre, r.segundoNombre, r.primerApellido, r.segundoApellido].filter(Boolean).join(' ');
+  const fNac = r.fechaNacimiento || '-';
+  const fReg = r.fechaRegistro || (r.timestampRegistro||'').split('T')[0] || '-';
+  const disc = r.tipoDiscapacidad === 'Múltiple' && r.discapacidadesMultiple
+    ? 'Múltiple: ' + r.discapacidadesMultiple
+    : (r.tipoDiscapacidad || '-');
+
+  // Foto del certificado si existe
+  const certImg = r.certificadoUrl
+    ? `<div style="margin-top:10px;text-align:center">
+        <img src="${r.certificadoUrl}" alt="Cert."
+          style="max-width:110px;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ccc">
+       </div>` : '';
+
+  const logoBase64 = document.querySelector('.auth-logo img, .hdr img.logo')?.src || 'logo_dusakawi.png';
+
+  const html = `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8">
+<title>Carnet — ${nom}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; font-family:'Segoe UI',Arial,sans-serif; }
+  body { background:#e8f0e8; display:flex; align-items:center; justify-content:center;
+         min-height:100vh; padding:20px; flex-direction:column; gap:14px; }
+  .carnet {
+    width:340px; background:#fff; border-radius:14px;
+    box-shadow:0 8px 32px rgba(0,0,0,.22); overflow:hidden;
+  }
+  .carnet-head {
+    background:linear-gradient(135deg,#13491D,#1B6B2A);
+    padding:14px 16px 12px; display:flex; align-items:center; gap:10px;
+  }
+  .carnet-head img { height:46px; object-fit:contain; filter:brightness(0) invert(1); }
+  .carnet-head-txt { color:#fff; }
+  .carnet-head-txt h2 { font-size:0.78rem; font-weight:800; letter-spacing:.4px; }
+  .carnet-head-txt p  { font-size:0.62rem; opacity:.82; margin-top:2px; }
+  .carnet-badge {
+    background:linear-gradient(90deg,#1B6B2A,#27AE60);
+    color:#fff; text-align:center; font-size:0.72rem; font-weight:700;
+    letter-spacing:2px; padding:5px 0; text-transform:uppercase;
+  }
+  .carnet-body { padding:16px 18px; }
+  .carnet-name {
+    font-size:1rem; font-weight:800; color:#13491D; text-transform:uppercase;
+    border-bottom:2px solid #27AE60; padding-bottom:8px; margin-bottom:10px;
+    text-align:center; letter-spacing:.3px;
+  }
+  .carnet-row { display:flex; gap:6px; margin-bottom:6px; align-items:flex-start; }
+  .carnet-label { font-size:0.65rem; color:#888; font-weight:700; text-transform:uppercase;
+                  min-width:90px; padding-top:1px; letter-spacing:.3px; }
+  .carnet-val   { font-size:0.8rem; color:#222; font-weight:600; flex:1; }
+  .carnet-disc  { background:#E8F5E9; border-left:3px solid #27AE60;
+                  border-radius:0 6px 6px 0; padding:6px 10px; margin:10px 0; }
+  .carnet-disc .carnet-label { color:#1B6B2A; }
+  .carnet-disc .carnet-val   { color:#13491D; }
+  .carnet-foot {
+    background:#f5f9f5; border-top:1px solid #DEE2E6;
+    padding:10px 18px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .carnet-foot-txt { font-size:0.62rem; color:#888; }
+  .carnet-foot-txt strong { display:block; color:#555; font-size:0.68rem; }
+  .qr-placeholder { width:44px; height:44px; background:#e0e0e0; border-radius:4px;
+    display:flex; align-items:center; justify-content:center; font-size:0.55rem;
+    color:#aaa; text-align:center; line-height:1.3; }
+  .cert-thumb { text-align:center; margin:10px 0 4px; }
+  .cert-thumb img { max-width:100px; max-height:100px; object-fit:contain;
+    border-radius:6px; border:1px solid #ddd; }
+  .btn-print { background:#1B6B2A; color:#fff; border:none; padding:11px 28px;
+    border-radius:8px; font-size:0.9rem; font-weight:700; cursor:pointer;
+    letter-spacing:.3px; }
+  .btn-print:hover { background:#13491D; }
+  .btn-cerrar { background:#eee; color:#555; border:none; padding:11px 18px;
+    border-radius:8px; font-size:0.9rem; font-weight:700; cursor:pointer; }
+  @media print {
+    body { background:#fff; padding:0; }
+    .carnet { box-shadow:none; border-radius:0; }
+    .no-print { display:none !important; }
+  }
+</style>
+</head><body>
+<div class="carnet">
+  <div class="carnet-head">
+    <img src="${logoBase64}" alt="Logo" onerror="this.style.display='none'">
+    <div class="carnet-head-txt">
+      <h2>DUSAKAWI EPSI</h2>
+      <p>Registro de Discapacidad — MAPSDIS</p>
+    </div>
+  </div>
+  <div class="carnet-badge">Carnet de Discapacidad</div>
+  <div class="carnet-body">
+    <div class="carnet-name">${nom || '—'}</div>
+
+    <div class="carnet-row">
+      <span class="carnet-label">Tipo ID</span>
+      <span class="carnet-val">${r.tipoId || '-'}</span>
+    </div>
+    <div class="carnet-row">
+      <span class="carnet-label">Identificación</span>
+      <span class="carnet-val">${r.identificacion || '-'}</span>
+    </div>
+    <div class="carnet-row">
+      <span class="carnet-label">Fecha Nac.</span>
+      <span class="carnet-val">${fNac} &nbsp;·&nbsp; ${r.edad || '-'} años</span>
+    </div>
+    <div class="carnet-row">
+      <span class="carnet-label">Sexo</span>
+      <span class="carnet-val">${r.sexo || '-'}</span>
+    </div>
+    <div class="carnet-row">
+      <span class="carnet-label">Municipio</span>
+      <span class="carnet-val">${r.municipio || '-'}, ${r.departamento || ''}</span>
+    </div>
+    <div class="carnet-row">
+      <span class="carnet-label">Régimen</span>
+      <span class="carnet-val">${r.regimen || '-'}</span>
+    </div>
+    <div class="carnet-row">
+      <span class="carnet-label">Afiliación</span>
+      <span class="carnet-val">${r.fechaAfiliacion || '-'}</span>
+    </div>
+
+    <div class="carnet-disc">
+      <div class="carnet-label">Tipo de Discapacidad</div>
+      <div class="carnet-val" style="margin-top:3px">${disc}</div>
+      ${r.origenDisc ? `<div class="carnet-label" style="margin-top:4px">Origen</div>
+      <div class="carnet-val" style="margin-top:2px">${r.origenDisc}</div>` : ''}
+    </div>
+
+    ${r.certificadoUrl ? `<div class="cert-thumb">
+      <div style="font-size:0.62rem;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px">Certificado de Discapacidad</div>
+      <img src="${r.certificadoUrl}" alt="Certificado"
+        onerror="this.parentElement.innerHTML='<div style=\\'font-size:0.75rem;color:#27AE60\\'>✅ Certificado registrado</div>'">
+    </div>` : ''}
+  </div>
+  <div class="carnet-foot">
+    <div class="carnet-foot-txt">
+      <strong>Registrado: ${fReg}</strong>
+      Por: ${r.registradoPor || r.actualizadoPor || '-'}
+    </div>
+    <div class="qr-placeholder">MAPSDIS<br>Dusakawi</div>
+  </div>
+</div>
+
+<div class="no-print" style="display:flex;gap:10px;margin-top:4px">
+  <button class="btn-print" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+  <button class="btn-cerrar" onclick="window.close()">✕ Cerrar</button>
+</div>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=420,height=720,menubar=no,toolbar=no,location=no');
+  if (w) { w.document.write(html); w.document.close(); }
+  else alert('Active los popups de su navegador para ver el carnet.');
+}
+
+// ── Carga diferida de miniaturas de certificado ───────────────
+function _initCertPreviews() {
+  document.querySelectorAll('.cert-img-wrap[data-src]').forEach(wrap => {
+    const src    = wrap.dataset.src;
+    const url    = wrap.dataset.url;
+    const isPdf  = wrap.dataset.pdf === 'true';
+    const icon   = isPdf ? '📄' : '🖼';
+    const label  = isPdf ? 'Abrir PDF' : 'Abrir imagen';
+
+    const fallback = () => {
+      wrap.innerHTML = `<div style="text-align:center;padding:22px 10px;width:100%">
+        <div style="font-size:3rem;margin-bottom:8px">${icon}</div>
+        <div style="color:#888;font-size:0.82rem;margin-bottom:12px">No se pudo cargar la vista previa</div>
+        <a href="${url}" target="_blank"
+           style="display:inline-block;background:#1565C0;color:#fff;padding:10px 22px;
+                  border-radius:8px;font-weight:700;font-size:0.88rem;text-decoration:none">
+          ${label}</a>
+      </div>`;
+    };
+
+    const img = new Image();
+    img.onload = () => {
+      wrap.innerHTML = '';
+      wrap.style.display    = 'block';
+      wrap.style.minHeight  = '';
+      img.style.cssText = 'width:100%;max-height:290px;object-fit:contain;display:block;cursor:zoom-in';
+      img.title = 'Toca para ver en pantalla completa';
+      img.onclick = () => window.open(url, '_blank');
+      wrap.appendChild(img);
+    };
+    img.onerror = fallback;
+    img.src = src;
+  });
 }
 
 async function guardarNota(id) {
@@ -2176,8 +2532,12 @@ function cerrarModalUser() {
   const sess=getSess();
   if(sess){ iniciarApp(sess); } else { go('scrLogin'); }
   actualizarEstadoConexion();
-  // Auto-sincronizar cada 5 minutos para ver registros de otros usuarios
-  setInterval(() => { if(getSess() && navigator.onLine) sincronizar(); }, 5 * 60 * 1000);
+  // Auto-sincronizar cada 90 segundos para ver cambios de otros dispositivos
+  setInterval(() => { if(getSess() && navigator.onLine) sincronizar(); }, 90 * 1000);
+  // Sincronizar al volver a la app (minimizada, cambio de pestaña, desbloqueo en móvil)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && getSess() && navigator.onLine) sincronizar();
+  });
 })();
 </script>
 </body>
