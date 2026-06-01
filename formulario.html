@@ -1255,16 +1255,18 @@ async function sincronizar() {
       await api.save(soloLocal[i]);
     }
 
-    // 4. Bajar estado final consolidado desde Drive
+    // 4. Bajar estado final consolidado desde Supabase (fuente de verdad)
     setSyncStatus('carg', 'Verificando...');
-    driveRecs = await api.load();
+    driveRecs = await supa.loadRecords();   // ← Supabase directo, no fallback a Drive
 
-    // 5. Merge final: Drive + registros locales pendientes (no eliminados)
+    // Filtrar tombstones (NUNCA resucitar eliminados aunque Supabase los tenga)
+    driveRecs = driveRecs.filter(r => !wasDeleted(String(r.id)));
+
+    // 5. Merge final: Supabase + registros locales pendientes (no eliminados)
     const driveIdsFinal = new Set(driveRecs.map(r => String(r.id)));
     const quedanLocal   = getLocal().filter(
       r => !driveIdsFinal.has(String(r.id)) && !wasDeleted(String(r.id))
     );
-    // Purgar del local cualquier registro que Drive ya eliminó
     const mergedFinal   = [...driveRecs, ...quedanLocal];
 
     setLocal(mergedFinal);
@@ -1273,11 +1275,20 @@ async function sincronizar() {
         !document.getElementById('vRecs').classList.contains('hidden')) {
       renderRecs(mergedFinal);
     }
+
+    // 6. Mantener Drive (GAS) sincronizado con Supabase
+    //    — sobreescribe el JSON de Drive con el estado limpio de Supabase
+    //    — esto repara Drive aunque el delete individual haya fallado antes
+    if (quedanLocal.length === 0) {
+      // Solo cuando todo está subido (sin pendientes) para no borrar datos no sincronizados
+      _sincronizarDrive(mergedFinal);
+    }
+
     const pendMsg = quedanLocal.length > 0
       ? ` (${quedanLocal.length} pendiente(s) de subir)`
       : '';
     setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
-      `Drive: ${driveRecs.length} registro(s)${pendMsg}`);
+      `Supabase: ${driveRecs.length} registro(s)${pendMsg}`);
 
     // Buscar automáticamente certificados faltantes en Supabase Storage / Drive
     autoCompletarCertificados().catch(() => {});
@@ -1287,6 +1298,29 @@ async function sincronizar() {
   } finally {
     _syncing = false;
   }
+}
+
+// ── Mantener Drive espejado con Supabase (reparar deletes fallidos) ──────────
+// Se llama en segundo plano tras cada sync exitosa sin pendientes.
+// Sobreescribe el JSON de Drive con el estado limpio de Supabase.
+let _driveSync = false;
+function _sincronizarDrive(records) {
+  if (_driveSync) return;
+  _driveSync = true;
+  try {
+    if (api._gsOk()) {
+      google.script.run
+        .withSuccessHandler(() => { _driveSync = false; })
+        .withFailureHandler(() => { _driveSync = false; })
+        .saveAllRecords(JSON.stringify(records));
+    } else if (api._url()) {
+      fetch(api._url() + '?action=saveAll&records=' + encodeURIComponent(JSON.stringify(records)))
+        .catch(() => {})
+        .finally(() => { _driveSync = false; });
+    } else {
+      _driveSync = false;
+    }
+  } catch(e) { _driveSync = false; }
 }
 
 // ── Auth ──────────────────────────────────────────────────────
@@ -1863,7 +1897,7 @@ async function eliminar(id) {
   }
   if (!confirm('¿Eliminar este registro permanentemente?')) return;
   markDeleted(id);  // tombstone: evita resurrección en otros dispositivos
-  const nuevos = getLocal().filter(r => r.id !== id);
+  const nuevos = getLocal().filter(r => String(r.id) !== String(id));
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
   setSyncStatus('carg', 'Eliminando en Drive...');
   try {
