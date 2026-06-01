@@ -1239,11 +1239,11 @@ async function sincronizar() {
       const nq = getQueue(); nq.shift(); setQueue(nq);
     }
 
-    // 2. Descargar todo desde Drive
-    setSyncStatus('carg', 'Descargando desde Drive...');
-    let driveRecs = await api.load();
+    // 2. Descargar estado actual desde Supabase (fuente primaria)
+    setSyncStatus('carg', 'Descargando desde Supabase...');
+    let driveRecs = await api.load();  // Supabase primero, GAS/Drive como fallback
 
-    // 3. Detectar registros locales ausentes en Drive y subirlos en orden
+    // 3. Detectar registros locales ausentes en Supabase y subirlos a AMBOS
     //    (excluir IDs que fueron eliminados — tombstone evita resurrección)
     const driveIds = new Set(driveRecs.map(r => String(r.id)));
     const soloLocal = getLocal()
@@ -1251,8 +1251,8 @@ async function sincronizar() {
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
     for (let i = 0; i < soloLocal.length; i++) {
-      setSyncStatus('carg', `Sincronizando ${i + 1}/${soloLocal.length}...`);
-      await api.save(soloLocal[i]);
+      setSyncStatus('carg', `Subiendo a Supabase+Drive ${i + 1}/${soloLocal.length}...`);
+      await api.save(soloLocal[i]);  // dual-write: Supabase + Drive simultáneo
     }
 
     // 4. Bajar estado final consolidado desde Supabase (fuente de verdad)
@@ -1277,18 +1277,15 @@ async function sincronizar() {
     }
 
     // 6. Mantener Drive (GAS) sincronizado con Supabase
-    //    — sobreescribe el JSON de Drive con el estado limpio de Supabase
-    //    — esto repara Drive aunque el delete individual haya fallado antes
-    if (quedanLocal.length === 0) {
-      // Solo cuando todo está subido (sin pendientes) para no borrar datos no sincronizados
-      _sincronizarDrive(mergedFinal);
-    }
+    //    — siempre sobreescribe Drive con el estado confirmado en Supabase
+    //    — repara deletes fallidos y mantiene Drive como espejo fiel
+    _sincronizarDrive(mergedFinal);
 
     const pendMsg = quedanLocal.length > 0
       ? ` (${quedanLocal.length} pendiente(s) de subir)`
       : '';
     setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
-      `Supabase: ${driveRecs.length} registro(s)${pendMsg}`);
+      `Supabase: ${driveRecs.length} reg | Drive: actualizando${pendMsg}`);
 
     // Buscar automáticamente certificados faltantes en Supabase Storage / Drive
     autoCompletarCertificados().catch(() => {});
