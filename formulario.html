@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -579,7 +579,7 @@ tr:hover td{background:#fafafa}
   <div id="vRecs" class="main hidden">
     <div class="card"><div class="sh sh-dark">📋 Registros Almacenados</div><div class="sb">
       <div class="sb-bar">
-        <input type="text" id="fBuscar" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()" autocomplete="off" autocorrect="off" spellcheck="false">
+        <input type="text" id="fBuscar" name="dusa_srch_x7q" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
         <button class="btn btn-b btn-sm" onclick="exportarJSON()">⬇ JSON</button>
         <button class="btn btn-y btn-sm" onclick="exportarCSV()">⬇ CSV</button>
         <button class="btn btn-g btn-sm" onclick="sincronizar()">🔄 Sincronizar</button>
@@ -1302,8 +1302,15 @@ function vista(viewName) {
   });
   if (viewName==='dash')  actualizarDash();
   if (viewName==='recs')  {
-    const fb = document.getElementById('fBuscar');
-    if (fb) fb.value = '';   // limpiar filtro al entrar a Registros
+    // Limpiar buscador — múltiples intentos porque Chrome aplica autocomplete tarde
+    const _limpiar = () => {
+      const fb = document.getElementById('fBuscar');
+      if (fb && fb.value.trim() !== '') { fb.value = ''; filtrar(); }
+    };
+    _limpiar();
+    setTimeout(_limpiar, 50);
+    setTimeout(_limpiar, 150);
+    setTimeout(_limpiar, 400);
     renderRecs(getLocal());
     sincronizar();
   }
