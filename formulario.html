@@ -579,7 +579,7 @@ tr:hover td{background:#fafafa}
   <div id="vRecs" class="main hidden">
     <div class="card"><div class="sh sh-dark">📋 Registros Almacenados</div><div class="sb">
       <div class="sb-bar">
-        <input type="text" id="fBuscar" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()">
+        <input type="text" id="fBuscar" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()" autocomplete="off" autocorrect="off" spellcheck="false">
         <button class="btn btn-b btn-sm" onclick="exportarJSON()">⬇ JSON</button>
         <button class="btn btn-y btn-sm" onclick="exportarCSV()">⬇ CSV</button>
         <button class="btn btn-g btn-sm" onclick="sincronizar()">🔄 Sincronizar</button>
@@ -870,98 +870,25 @@ const supa = {
   }
 };
 
-// ── GAS — backend secundario (Drive) ──────────────────────────
+// ── GAS — SOLO para archivos/certificados (Drive) ─────────────
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzY-HYJEP2BAqhmnN_ROzfg_CSN5K7oLgz76PDY_FMdwrGWfxSBvQWP1OXSACu1Ni-uvg/exec';
 
 const api = {
   _gsOk() { return typeof google !== 'undefined' && google && google.script; },
   _url()  { return localStorage.getItem('dusa_gas_url') || GAS_URL_DEFAULT; },
-  _post(body) {
-    return fetch(this._url(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(body)
-    }).then(r => r.json()).then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
+
+  // ── Registros: SOLO Supabase ─────────────────────────────────
+  async load()         { return supa.loadRecords(); },
+  async save(record)   { return supa.saveRecord(record); },
+  async remove(id)     { return supa.deleteRecord(id); },
+  async saveAll(recs)  {
+    for (const r of recs) await supa.saveRecord(r).catch(() => {});
   },
-  _get(params) {
-    const qs = Object.entries(params).map(([k,v]) =>
-      k + '=' + encodeURIComponent(typeof v === 'object' ? JSON.stringify(v) : v)
-    ).join('&');
-    return fetch(this._url() + '?' + qs).then(r => r.json())
-      .then(d => { if (!d.ok) throw new Error(d.error); return d.data; });
-  },
-  // ── Registros: Supabase primario → GAS fallback ───────────────
-  async load() {
-    try { return await supa.loadRecords(); } catch(e) { console.warn('Supabase load falló, usando GAS:', e.message); }
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]'))).withFailureHandler(rej).loadRecords());
-    if (!this._url()) return [];
-    return this._get({ action: 'load' });
-  },
-  async save(record) {
-    // Guardar en Supabase (primario) y GAS/Drive (respaldo) en paralelo
-    const supaPromise = supa.saveRecord(record).catch(e => console.warn('Supabase save falló:', e.message));
-    let gasPromise;
-    if (this._gsOk()) {
-      gasPromise = new Promise((res, rej) =>
-        google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveRecord(JSON.stringify(record)));
-    } else if (this._url()) {
-      const recJson = JSON.stringify(record);
-      gasPromise = recJson.length > 1500 ? this._post({ action: 'save', record }) : this._get({ action: 'save', record });
-    }
-    await supaPromise;
-    if (gasPromise) gasPromise.catch(e => console.warn('GAS save falló:', e.message));
-    return record;
-  },
-  async remove(id) {
-    const supaP = supa.deleteRecord(id).catch(e => console.warn('Supabase delete falló:', e.message));
-    if (this._gsOk()) google.script.run.deleteRecord(id);
-    else if (this._url()) this._get({ action: 'delete', id }).catch(() => {});
-    await supaP;
-  },
-  async saveAll(records) {
-    await Promise.all(records.map(r => supa.saveRecord(r).catch(() => {})));
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(rej).saveAllRecords(JSON.stringify(records)));
-    if (this._url()) return this._get({ action: 'saveAll', records });
-  },
-  // ── Usuarios: Supabase primario → GAS fallback ────────────────
-  async loadUsers() {
-    try { return await supa.loadUsers(); } catch(e) { console.warn('Supabase loadUsers falló, usando GAS:', e.message); }
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(j => res(JSON.parse(j || '[]')))
-        .withFailureHandler(() => {
-          if (this._url()) this._get({ action: 'loadUsers' }).then(res).catch(rej);
-          else rej(new Error('Sin URL de servidor'));
-        }).loadUsersGAS());
-    if (!this._url()) return Promise.reject(new Error('Sin URL de servidor'));
-    return this._get({ action: 'loadUsers' });
-  },
-  async saveUser(user) {
-    const supaP = supa.saveUser(user).catch(e => console.warn('Supabase saveUser falló:', e.message));
-    let gasP;
-    if (this._gsOk()) {
-      gasP = new Promise((res, rej) =>
-        google.script.run.withSuccessHandler(res).withFailureHandler(() => {
-          if (this._url()) this._get({ action: 'saveUser', user }).then(res).catch(rej);
-          else rej(new Error('Sin URL'));
-        }).saveUserGAS(JSON.stringify(user)));
-    } else if (this._url()) {
-      gasP = this._get({ action: 'saveUser', user });
-    }
-    await supaP;
-    if (gasP) return gasP;
-  },
-  async removeUser(id) {
-    supa.deleteUser(id).catch(e => console.warn('Supabase deleteUser falló:', e.message));
-    if (this._gsOk()) return new Promise((res, rej) =>
-      google.script.run.withSuccessHandler(res).withFailureHandler(() => {
-        if (this._url()) this._get({ action: 'deleteUser', id }).then(res).catch(rej);
-        else rej(new Error('Sin URL de servidor'));
-      }).deleteUserGAS(id));
-    if (!this._url()) return Promise.resolve();
-    return this._get({ action: 'deleteUser', id });
-  },
+
+  // ── Usuarios: SOLO Supabase ──────────────────────────────────
+  async loadUsers()    { return supa.loadUsers(); },
+  async saveUser(u)    { return supa.saveUser(u); },
+  async removeUser(id) { return supa.deleteUser(id); },
   // Comprime imágenes antes de subir (fotos → JPEG 80%, max 1400px)
   // PDFs y otros archivos se devuelven sin cambios
   _comprimirSiImagen(file) {
@@ -1218,12 +1145,6 @@ let _syncing = false;
 
 async function sincronizar() {
   if (_syncing) return;
-
-  const tieneApi = api._gsOk() || api._url();
-  if (!tieneApi) {
-    setSyncStatus('off', 'Configure URL del servidor en Administración');
-    return;
-  }
   if (!navigator.onLine) {
     setSyncStatus('off', 'Sin internet — datos guardados localmente');
     return;
@@ -1231,43 +1152,41 @@ async function sincronizar() {
 
   _syncing = true;
   try {
-    // 1. Subir cola offline en orden (FIFO, uno por uno)
+    // 1. Subir cola offline (registros guardados sin internet)
     const queue = getQueue();
     for (let i = 0; i < queue.length; i++) {
-      setSyncStatus('carg', `Subiendo pendiente ${i + 1}/${queue.length}...`);
-      await api.save(queue[i]);
+      setSyncStatus('carg', `Subiendo offline ${i + 1}/${queue.length}...`);
+      await supa.saveRecord(queue[i]);
       const nq = getQueue(); nq.shift(); setQueue(nq);
     }
 
-    // 2. Descargar estado actual desde Supabase (fuente primaria)
+    // 2. Descargar TODOS los registros desde Supabase
     setSyncStatus('carg', 'Descargando desde Supabase...');
-    let driveRecs = await api.load();  // Supabase primero, GAS/Drive como fallback
+    let supaRecs = await supa.loadRecords();
 
-    // 3. Detectar registros locales ausentes en Supabase y subirlos a AMBOS
-    //    (excluir IDs que fueron eliminados — tombstone evita resurrección)
-    const driveIds = new Set(driveRecs.map(r => String(r.id)));
+    // 3. Detectar registros locales que Supabase no tiene → subirlos
+    const supaIds = new Set(supaRecs.map(r => String(r.id)));
     const soloLocal = getLocal()
-      .filter(r => !driveIds.has(String(r.id)) && !wasDeleted(String(r.id)))
+      .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
     for (let i = 0; i < soloLocal.length; i++) {
-      setSyncStatus('carg', `Subiendo a Supabase+Drive ${i + 1}/${soloLocal.length}...`);
-      await api.save(soloLocal[i]);  // dual-write: Supabase + Drive simultáneo
+      setSyncStatus('carg', `Subiendo a Supabase ${i + 1}/${soloLocal.length}...`);
+      await supa.saveRecord(soloLocal[i]);
     }
 
-    // 4. Bajar estado final consolidado desde Supabase (fuente de verdad)
-    setSyncStatus('carg', 'Verificando...');
-    driveRecs = await supa.loadRecords();   // ← Supabase directo, no fallback a Drive
+    // 4. Estado final desde Supabase (fuente única de verdad)
+    if (soloLocal.length > 0) supaRecs = await supa.loadRecords();
 
-    // Filtrar tombstones (NUNCA resucitar eliminados aunque Supabase los tenga)
-    driveRecs = driveRecs.filter(r => !wasDeleted(String(r.id)));
+    // Nunca resucitar registros eliminados
+    supaRecs = supaRecs.filter(r => !wasDeleted(String(r.id)));
 
-    // 5. Merge final: Supabase + registros locales pendientes (no eliminados)
-    const driveIdsFinal = new Set(driveRecs.map(r => String(r.id)));
-    const quedanLocal   = getLocal().filter(
-      r => !driveIdsFinal.has(String(r.id)) && !wasDeleted(String(r.id))
+    // 5. Merge: Supabase + pendientes locales que aún no confirmó Supabase
+    const supaIdsFinal = new Set(supaRecs.map(r => String(r.id)));
+    const quedanLocal  = getLocal().filter(
+      r => !supaIdsFinal.has(String(r.id)) && !wasDeleted(String(r.id))
     );
-    const mergedFinal   = [...driveRecs, ...quedanLocal];
+    const mergedFinal  = [...supaRecs, ...quedanLocal];
 
     setLocal(mergedFinal);
     actualizarDash();
@@ -1276,48 +1195,18 @@ async function sincronizar() {
       renderRecs(mergedFinal);
     }
 
-    // 6. Mantener Drive (GAS) sincronizado con Supabase
-    //    — siempre sobreescribe Drive con el estado confirmado en Supabase
-    //    — repara deletes fallidos y mantiene Drive como espejo fiel
-    _sincronizarDrive(mergedFinal);
-
-    const pendMsg = quedanLocal.length > 0
-      ? ` (${quedanLocal.length} pendiente(s) de subir)`
-      : '';
+    const pendMsg = quedanLocal.length > 0 ? ` (${quedanLocal.length} pendiente(s))` : '';
     setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
-      `Supabase: ${driveRecs.length} reg | Drive: actualizando${pendMsg}`);
+      `✅ Supabase: ${supaRecs.length} registro(s)${pendMsg}`);
 
-    // Buscar automáticamente certificados faltantes en Supabase Storage / Drive
+    // Buscar certificados faltantes en Storage / Drive
     autoCompletarCertificados().catch(() => {});
 
   } catch (err) {
-    setSyncStatus('err', 'Error: ' + (err.message || String(err)));
+    setSyncStatus('err', '❌ Supabase: ' + (err.message || String(err)));
   } finally {
     _syncing = false;
   }
-}
-
-// ── Mantener Drive espejado con Supabase (reparar deletes fallidos) ──────────
-// Se llama en segundo plano tras cada sync exitosa sin pendientes.
-// Sobreescribe el JSON de Drive con el estado limpio de Supabase.
-let _driveSync = false;
-function _sincronizarDrive(records) {
-  if (_driveSync) return;
-  _driveSync = true;
-  try {
-    if (api._gsOk()) {
-      google.script.run
-        .withSuccessHandler(() => { _driveSync = false; })
-        .withFailureHandler(() => { _driveSync = false; })
-        .saveAllRecords(JSON.stringify(records));
-    } else if (api._url()) {
-      fetch(api._url() + '?action=saveAll&records=' + encodeURIComponent(JSON.stringify(records)))
-        .catch(() => {})
-        .finally(() => { _driveSync = false; });
-    } else {
-      _driveSync = false;
-    }
-  } catch(e) { _driveSync = false; }
 }
 
 // ── Auth ──────────────────────────────────────────────────────
@@ -1412,7 +1301,12 @@ function vista(viewName) {
     if (nb && !nb.classList.contains('hidden')) nb.classList.toggle('on', x===viewName);
   });
   if (viewName==='dash')  actualizarDash();
-  if (viewName==='recs')  { renderRecs(getLocal()); sincronizar(); }
+  if (viewName==='recs')  {
+    const fb = document.getElementById('fBuscar');
+    if (fb) fb.value = '';   // limpiar filtro al entrar a Registros
+    renderRecs(getLocal());
+    sincronizar();
+  }
   if (viewName==='admin') renderAdmin();
   if (viewName==='form') {
     document.getElementById('fFechaReg').value = hoy();
@@ -1810,14 +1704,13 @@ async function guardar(e) {
       } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
     }
     // local ya fue guardado antes del upload — solo notificar
-    alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
+    alerta('alForm', '✅ Guardado localmente. Sincronizando con Supabase...', 'ok');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    const tieneApi = api._gsOk() || api._url();
-    if (!navigator.onLine || !tieneApi) {
+    if (!navigator.onLine) {
       encolarRegistro(rec); setSyncStatus('off', 'Sin conexión — guardado local ✓');
     } else {
-      setSyncStatus('carg', 'Guardando en Drive...');
-      try { const total = await api.save(rec); setSyncStatus('ok', 'Drive: ' + total + ' registro(s)'); }
+      setSyncStatus('carg', 'Guardando en Supabase...');
+      try { await supa.saveRecord(rec); setSyncStatus('ok', `✅ Supabase: guardado`); }
       catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
     }
   }
@@ -1896,12 +1789,13 @@ async function eliminar(id) {
   markDeleted(id);  // tombstone: evita resurrección en otros dispositivos
   const nuevos = getLocal().filter(r => String(r.id) !== String(id));
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
-  setSyncStatus('carg', 'Eliminando en Drive...');
+  setSyncStatus('carg', 'Eliminando en Supabase...');
   try {
-    const t = await api.remove(id);
-    setSyncStatus('ok', 'Drive: ' + t + ' registro(s)');
-  } catch {
-    setSyncStatus('err', 'Error al eliminar en Drive');
+    await supa.deleteRecord(id);
+    setSyncStatus('ok', `✅ Supabase: ${getLocal().length} registro(s)`);
+  } catch(e) {
+    setSyncStatus('err', 'Error al eliminar: ' + e.message);
+    // Tombstone garantiza que aunque falle ahora, en la próxima sync no vuelve
   }
 }
 
@@ -1910,12 +1804,18 @@ async function borrarTodo() {
     alert('Solo el Super Administrador puede borrar todos los registros.');
     return;
   }
-  setLocal([]); renderRecs([]); actualizarDash();
+  if (!confirm('¿Eliminar TODOS los registros de Supabase? Esta acción no se puede deshacer.')) return;
+  setSyncStatus('carg', 'Eliminando todos en Supabase...');
   try {
-    await api.saveAll([]);
-    setSyncStatus('ok', 'Drive: 0 registros');
-  } catch {
-    setSyncStatus('err', 'Error al limpiar Drive');
+    const todos = getLocal();
+    for (const r of todos) {
+      markDeleted(r.id);
+      await supa.deleteRecord(r.id).catch(() => {});
+    }
+    setLocal([]); renderRecs([]); actualizarDash();
+    setSyncStatus('ok', '✅ Supabase: 0 registros');
+  } catch(e) {
+    setSyncStatus('err', 'Error al limpiar: ' + e.message);
   }
 }
 
@@ -2266,10 +2166,10 @@ function importarJSON(e) {
       const nuevos = inc.filter(r => !ids.has(r.id));
       const merged = [...exist, ...nuevos];
       setLocal(merged);
-      setSyncStatus('carg', 'Subiendo a Drive...');
+      setSyncStatus('carg', 'Subiendo a Supabase...');
       api.saveAll(merged)
-        .then(t => { setSyncStatus('ok', 'Drive: ' + t + ' registro(s)'); actualizarDash(); })
-        .catch(() => setSyncStatus('err', 'Error al subir a Drive'));
+        .then(() => { setSyncStatus('ok', `✅ Supabase: ${merged.length} registro(s)`); actualizarDash(); })
+        .catch(() => setSyncStatus('err', 'Error al subir a Supabase'));
       alert('Importados: ' + nuevos.length + ' nuevo(s). Duplicados ignorados: ' + (inc.length - nuevos.length));
     } catch { alert('Archivo JSON inválido.'); }
     e.target.value = '';
@@ -2415,23 +2315,22 @@ async function probarConexionDrive() {
 
 // ── Panel de Administración ───────────────────────────────────
 async function forzarSyncDesdeDrive() {
-  if (!confirm('⚠ Esto reemplazará la lista local con los usuarios que están en Drive.\n¿Continuar?')) return;
+  if (!confirm('⚠ Esto reemplazará la lista local con los usuarios que están en Supabase.\n¿Continuar?')) return;
   const btn = document.querySelector('[onclick="forzarSyncDesdeDrive()"]');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Cargando...'; }
   try {
-    const puedeSync = navigator.onLine && (api._url() || api._gsOk());
-    if (!puedeSync) { alerta('alAdmin', '❌ Sin conexión a internet o sin URL del servidor configurada.', 'err'); return; }
-    const driveUsers = await api.loadUsers();
-    if (!driveUsers || driveUsers.length === 0) {
-      alerta('alAdmin', '⚠ Drive devolvió una lista vacía. No se reemplazó nada.', 'err'); return;
+    if (!navigator.onLine) { alerta('alAdmin', '❌ Sin conexión a internet.', 'err'); return; }
+    const supaUsers = await supa.loadUsers();
+    if (!supaUsers || supaUsers.length === 0) {
+      alerta('alAdmin', '⚠ Supabase devolvió lista vacía. No se reemplazó nada.', 'err'); return;
     }
-    setUsers(driveUsers);                            // Reemplaza local completamente con Drive
-    alerta('alAdmin', '✅ Lista actualizada desde Drive (' + driveUsers.length + ' usuarios).', 'ok');
+    setUsers(supaUsers);
+    alerta('alAdmin', '✅ Lista actualizada desde Supabase (' + supaUsers.length + ' usuarios).', 'ok');
     await renderAdmin();
   } catch(err) {
-    alerta('alAdmin', '❌ Error al conectar con Drive: ' + (err.message || err), 'err');
+    alerta('alAdmin', '❌ Error al conectar con Supabase: ' + (err.message || err), 'err');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar desde Drive'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar desde Supabase'; }
   }
 }
 
