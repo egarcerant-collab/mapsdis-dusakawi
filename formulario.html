@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -793,7 +793,9 @@ const supa = {
     };
   },
   async loadRecords() {
-    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?select=registro&order=id.asc', { headers: this._h() });
+    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?select=registro&order=id.asc&limit=10000', {
+      headers: { ...this._h(), 'Range-Unit': 'items', 'Range': '0-9999' }
+    });
     if (!r.ok) throw new Error('Supabase ' + r.status);
     const rows = await r.json();
     // Deduplicar por registro.id (por si hay filas repetidas en la DB)
