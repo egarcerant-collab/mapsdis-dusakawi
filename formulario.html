@@ -278,6 +278,10 @@ tr:hover td{background:#fafafa}
         <div class="sh" style="background:linear-gradient(135deg,#6C3483,#9B59B6);color:#fff">👶 Grupo Etario</div>
         <div class="sb" id="chartEdad"><div class="chart-empty">Cargando...</div></div>
       </div>
+      <div class="card" style="grid-column:1/-1">
+        <div class="sh" style="background:linear-gradient(135deg,#1565C0,#1976D2);color:#fff">👤 Registros por Funcionario</div>
+        <div class="sb" id="chartFunc"><div class="chart-empty">Cargando...</div></div>
+      </div>
     </div>
 
     <div class="card">
@@ -2701,6 +2705,46 @@ function actualizarDash() {
     .filter(([, n]) => n > 0);
   renderBarChart('chartEdad', edadOrdenada,
     (_, i) => COLORES_EDAD[i] || '#95A5A6');
+
+  // ── Gráfica: Registros por Funcionario ───────────────────────
+  const elFunc = document.getElementById('chartFunc');
+  if (elFunc) {
+    const COLORES_FUNC = ['#1565C0','#2E7D32','#6A1B9A','#E65100','#00695C','#AD1457','#4527A0','#558B2F'];
+    // Normalizar nombres (Heidy + Heidy2026 → Heidy)
+    const mapaFunc = {};
+    recs.forEach(r => {
+      const raw   = (r.registradoPor||'Sin asignar').trim();
+      const canon = raw.replace(/\s*\d{4,}$/, '').trim() || 'Sin asignar';
+      mapaFunc[canon] = (mapaFunc[canon] || 0) + 1;
+    });
+    const dataFunc = Object.entries(mapaFunc).sort((a,b)=>b[1]-a[1]);
+    const maxF = dataFunc[0]?.[1] || 1;
+    elFunc.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:12px">
+        ${dataFunc.map(([nombre,cnt],i)=>{
+          const pct = Math.max(4,Math.round((cnt/maxF)*100));
+          const color = COLORES_FUNC[i%COLORES_FUNC.length];
+          const pctTotal = recs.length ? ((cnt/recs.length)*100).toFixed(1) : 0;
+          // Completos de este funcionario
+          const completosF = recs.filter(r=>{
+            const n = (r.registradoPor||'Sin asignar').trim().replace(/\s*\d{4,}$/,'').trim()||'Sin asignar';
+            return n===nombre && esCompleto(r);
+          }).length;
+          return `<div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:12px;border-left:4px solid ${color}">
+            <div style="font-weight:700;color:${color};font-size:0.85rem;margin-bottom:6px">${nombre}</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#111;line-height:1">${cnt}</div>
+            <div style="font-size:0.75rem;color:#888;margin-top:3px">${pctTotal}% del total</div>
+            <div style="margin-top:8px;background:#e0e0e0;border-radius:4px;height:6px">
+              <div style="width:${pct}%;background:${color};height:6px;border-radius:4px"></div>
+            </div>
+            <div style="font-size:0.72rem;color:#555;margin-top:5px">
+              ✅ Completos: <b>${completosF}</b> &nbsp;|&nbsp;
+              ⚠️ Incompletos: <b>${cnt-completosF}</b>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
 
   // ── Últimos 5 registros ───────────────────────────────────────
   const tbody = document.getElementById('dtBody');
