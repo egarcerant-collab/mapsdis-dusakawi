@@ -1256,6 +1256,27 @@ async function sincronizar() {
     setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
       `✅ Supabase: ${supaRecs.length} registro(s)${pendMsg}`);
 
+    // Refrescar perfil del usuario actual desde Supabase (detecta cambios de rol)
+    try {
+      const supaUsers = await api.loadUsers();
+      setUsers(supaUsers);
+      const sess = getSess();
+      if (sess) {
+        const userActual = supaUsers.find(x => String(x.id) === String(sess.id));
+        if (userActual) {
+          const perfilViejo = sess.perfil || (sess.superadmin ? 'superadministrador' : 'usuario');
+          const perfilNuevo = userActual.perfil || (userActual.superadmin ? 'superadministrador' : 'usuario');
+          if (perfilNuevo !== perfilViejo) {
+            setSess(userActual);
+            // Recargar UI con nuevos permisos
+            iniciarApp(userActual);
+          } else {
+            setSess({ ...sess, ...userActual });
+          }
+        }
+      }
+    } catch(_) {}
+
     // Buscar certificados faltantes en Storage / Drive
     autoCompletarCertificados().catch(() => {});
 
@@ -1271,33 +1292,42 @@ async function doLogin() {
   const u = inp('lUser'), p = inp('lPass');
   if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
   const _match = (stored, plain) => stored === btoa(plain) || stored === plain;
-  let user = getUsers().find(x => x.username === u && _match(x.password, p));
-  if (!user && (navigator.onLine || api._gsOk())) {
-    alerta('alLogin', '⏳ Verificando en servidor...', 'inf');
+
+  let user = null;
+
+  // Con conexión: Supabase SIEMPRE primero (garantiza permisos actualizados)
+  if (navigator.onLine) {
+    alerta('alLogin', '⏳ Verificando credenciales...', 'inf');
     try {
-      const driveUsers = await api.loadUsers();
-      user = driveUsers.find(x => x.username === u && _match(x.password, p));
-      if (user) {
+      const supaUsers = await api.loadUsers();
+      if (supaUsers.length > 0) {
+        user = supaUsers.find(x => x.username === u && _match(x.password, p));
+        if (!user) {
+          alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
+          return;
+        }
         // Migrar contraseña a Base64 si estaba en texto plano
         if (user.password !== btoa(p)) {
           user = { ...user, password: btoa(p) };
-          api.saveUser(user).catch(() => {});  // actualizar en Drive
+          api.saveUser(user).catch(() => {});
         }
-        const local = getUsers();
-        const idx = local.findIndex(x => String(x.id) === String(user.id));
-        if (idx >= 0) local[idx] = user; else local.push(user);
-        setUsers(local);
-      } else if (driveUsers.length > 0) {
-        // Hay usuarios en Drive pero ninguno coincide
-        alerta('alLogin', '❌ Usuario o contraseña incorrectos. Verifique con el administrador.', 'err');
-        return;
+        // Actualizar caché local con datos frescos (rol, cargo, etc.)
+        const localU = getUsers();
+        const idx = localU.findIndex(x => String(x.id) === String(user.id));
+        if (idx >= 0) localU[idx] = user; else localU.push(user);
+        setUsers(localU);
       }
     } catch (err) {
-      // Error de conexión — mostrar mensaje útil
-      alerta('alLogin', '⚠ No se pudo verificar con el servidor. ' + (err.message || '') + ' Intente de nuevo.', 'err');
+      alerta('alLogin', '⚠ No se pudo conectar con el servidor. ' + (err.message||'') + ' Intente de nuevo.', 'err');
       return;
     }
   }
+
+  // Sin conexión: usar caché local
+  if (!user) {
+    user = getUsers().find(x => x.username === u && _match(x.password, p));
+  }
+
   if (!user) return alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
   setSess(user);
   iniciarApp(user);
