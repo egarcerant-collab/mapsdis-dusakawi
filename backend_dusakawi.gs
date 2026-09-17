@@ -52,6 +52,8 @@ function doGet(e) {
     } else if (action === 'checkUpload') {
       const cached = CacheService.getScriptCache().get('dusa_cert_' + params.uploadId);
       return buildResponse({ ok: true, data: cached || null });
+    } else if (action === 'buscarCertificado') {
+      return buildResponse({ ok: true, data: buscarCertificadoGAS(params.recordId) });
     } else if (action === 'listBackups') {
       return buildResponse({ ok: true, data: listBackups() });
     } else if (action === 'restoreBackup') {
@@ -105,6 +107,24 @@ function doPost(e) {
 // ── Upload directo desde google.script.run ────────────────────
 function uploadCertificadoGAS(recordId, fileName, base64Data, mimeType) {
   return saveCertificado(recordId, fileName, base64Data, mimeType);
+}
+
+// ── Buscar certificado en Drive por prefijo ───────────────────
+function buscarCertificadoGAS(recordId) {
+  try {
+    const folder = getCertificadosFolder();
+    const prefix = 'cert_' + recordId + '_';
+    const files  = folder.getFiles();
+    while (files.hasNext()) {
+      const f = files.next();
+      if (f.getName().startsWith(prefix)) {
+        return 'https://drive.google.com/file/d/' + f.getId() + '/view';
+      }
+    }
+  } catch (e) {
+    Logger.log('buscarCertificadoGAS error: ' + e.message);
+  }
+  return null;
 }
 
 // ── Guardar certificado en subcarpeta Drive ───────────────────
