@@ -620,7 +620,7 @@ tr:hover td{background:#fafafa}
       <div class="tw"><table>
         <thead><tr id="recHead">
           <th id="thCheck" style="display:none;width:30px"><input type="checkbox" id="chkTodos" title="Seleccionar todo" onchange="toggleSeleccionTodos(this)"></th>
-          <th>#</th><th>Tipo/ID</th><th>Nombre</th>
+          <th title="% de campos diligenciados">#/%</th><th>Tipo/ID</th><th>Nombre</th>
           <th class="col-opc">F.Nac.</th><th class="col-opc">Edad</th><th class="col-opc">Sexo</th>
           <th>Municipio</th><th>Discapacidad</th>
           <th class="col-opc">Régimen</th>
@@ -1855,9 +1855,16 @@ function renderRecs(recs) {
     const chkCell = esSA
       ? `<td style="text-align:center"><input type="checkbox" class="chk-rec" data-id="${r.id}" onchange="actualizarBarraSeleccion()"></td>`
       : '';
+    const prog = progreso(r);
+    const progColor = prog.pct===100?'#2E7D32':prog.pct>=70?'#E8A000':'#E74C3C';
     return `<tr>
       ${chkCell}
-      <td>${i+1}</td>
+      <td style="text-align:center">
+        <span style="font-size:0.7rem;color:${progColor};font-weight:700">${prog.pct}%</span><br>
+        <div style="width:28px;height:3px;background:#eee;border-radius:2px;margin:1px auto 0">
+          <div style="width:${prog.pct}%;height:3px;background:${progColor};border-radius:2px"></div>
+        </div>
+      </td>
       <td><span class="bdg bdg-b">${r.tipoId||''}</span> ${r.identificacion||'-'}</td>
       <td>${nom||'-'}</td>
       <td class="col-opc">${r.fechaNacimiento||'-'}</td><td class="col-opc">${r.edad||'-'}</td><td class="col-opc">${r.sexo||'-'}</td>
@@ -1942,8 +1949,32 @@ function normFun(nombre) {
 }
 
 let _soloCompletos = false;
-const CAMPOS_OBLIGATORIOS = ['tipoId','identificacion','primerNombre','primerApellido',
-  'fechaNacimiento','sexo','municipio','tipoDiscapacidad','regimen'];
+
+// Todos los campos que deben estar diligenciados para considerarse completo
+const CAMPOS_OBLIGATORIOS = [
+  // Identificación
+  'tipoId', 'identificacion',
+  // Nombres
+  'primerNombre', 'primerApellido',
+  // Datos personales
+  'fechaNacimiento', 'edad', 'sexo',
+  // Ubicación y afiliación
+  'departamento', 'municipio', 'zona', 'regimen',
+  // Etnia
+  'perteneniaEtnica',
+  // Discapacidad
+  'tipoDiscapacidad', 'certificadoDisc', 'origenDisc',
+  // Rehabilitación y tratamiento
+  'enRehabilitacion', 'asistiendoRehab', 'estadoTratamiento',
+  // Seguimiento
+  'cuidador', 'telefono'
+];
+
+// Devuelve cuántos campos obligatorios tiene diligenciados (para progreso)
+function progreso(r) {
+  const llenos = CAMPOS_OBLIGATORIOS.filter(c => (r[c]||'').toString().trim() !== '').length;
+  return { llenos, total: CAMPOS_OBLIGATORIOS.length, pct: Math.round(llenos / CAMPOS_OBLIGATORIOS.length * 100) };
+}
 
 function esCompleto(r) {
   return CAMPOS_OBLIGATORIOS.every(c => (r[c]||'').toString().trim() !== '');
@@ -2756,10 +2787,11 @@ function actualizarDash() {
           const color = COLORES_FUNC[i%COLORES_FUNC.length];
           const pctTotal = recs.length ? ((cnt/recs.length)*100).toFixed(1) : 0;
           // Completos de este funcionario
-          const completosF = recs.filter(r=>{
-            const n = (r.registradoPor||'Sin asignar').trim().replace(/\s*\d{4,}$/,'').trim()||'Sin asignar';
-            return n===nombre && esCompleto(r);
-          }).length;
+          const recsF = recs.filter(r=>{
+            const n=(r.registradoPor||'Sin asignar').trim().replace(/\s*\d{4,}$/,'').trim()||'Sin asignar';
+            return n===nombre;
+          });
+          const completosF = recsF.filter(r=>esCompleto(r)).length;
           return `<div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:12px;border-left:4px solid ${color}">
             <div style="font-weight:700;color:${color};font-size:0.85rem;margin-bottom:6px">${nombre}</div>
             <div style="font-size:1.6rem;font-weight:800;color:#111;line-height:1">${cnt}</div>
