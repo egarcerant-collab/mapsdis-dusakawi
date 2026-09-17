@@ -591,17 +591,22 @@ tr:hover td{background:#fafafa}
     <div class="card"><div class="sh sh-dark">📋 Registros Almacenados</div><div class="sb">
       <div class="sb-bar">
         <input type="text" id="fBuscar" name="dusa_srch_x7q" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
-        <select id="fFuncionario" style="display:none;min-width:180px;max-width:240px" onchange="filtrar()">
+        <select id="fFuncionario" style="display:none;min-width:170px;max-width:220px" onchange="filtrar()">
           <option value="">— Todos los funcionarios —</option>
         </select>
+        <button id="btnSoloCompletos" class="btn btn-sm" style="background:#5D4037;color:#fff" onclick="toggleSoloCompletos()" title="Mostrar solo registros con todos los campos obligatorios diligenciados">☑ Solo completos</button>
         <button class="btn btn-b btn-sm" onclick="exportarJSON()">⬇ JSON</button>
         <button class="btn btn-y btn-sm" onclick="exportarCSV()">⬇ CSV</button>
         <button class="btn btn-sm" style="background:#217346;color:#fff" onclick="exportarXLSX()">⬇ Excel</button>
         <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(null)">📋 Informe PDF</button>
         <button id="btnMasCols" class="btn btn-sm" style="background:#6c757d;color:#fff" onclick="toggleColumnas()">⊞ Más columnas</button>
         <button class="btn btn-g btn-sm" onclick="sincronizar()">🔄 Sincronizar</button>
-        <button class="btn btn-sm" style="background:#E74C3C;color:#fff"
-                onclick="if(confirm('¿Eliminar TODOS los registros?'))borrarTodo()">🗑 Borrar Todo</button>
+      </div>
+      <!-- Zona de peligro: separada para evitar clics accidentales -->
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-sm" style="background:#fff;color:#E74C3C;border:1.5px solid #E74C3C;font-size:0.73rem"
+                onclick="if(confirm('⚠️ Esta acción eliminará TODOS los registros permanentemente. ¿Está seguro?'))borrarTodo()">
+          🗑 Borrar Todo</button>
       </div>
       <div id="barraSeleccion" style="display:none;background:#FFF3CD;border:1px solid #E8A000;border-radius:6px;padding:8px 14px;margin-bottom:8px;display:none;align-items:center;gap:12px">
         <span id="lblSeleccionados" style="font-size:0.9rem;font-weight:600;color:#856404"></span>
@@ -749,12 +754,23 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
-<!-- MODAL -->
+<!-- MODAL DETALLE -->
 <div id="modalBg" class="modal-bg hidden" onclick="if(event.target===this)cerrarModal()">
   <div class="modal-box">
     <div class="modal-head"><strong>📋 Detalle del Registro</strong>
       <button onclick="cerrarModal()">×</button></div>
     <div class="modal-body" id="modalCont"></div>
+  </div>
+</div>
+
+<!-- MODAL LLAMADA / WHATSAPP -->
+<div id="modalLlamadaBg" class="modal-bg hidden" onclick="if(event.target===this)cerrarModalLlamada()">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-head" style="background:#075E54">
+      <strong id="modalLlamadaTit">📞 Gestión de Llamada</strong>
+      <button onclick="cerrarModalLlamada()">×</button>
+    </div>
+    <div class="modal-body" id="modalLlamadaCont"></div>
   </div>
 </div>
 
@@ -1811,6 +1827,7 @@ function renderRecs(recs) {
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
         <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
+        <button class="btn btn-sm" style="background:#075E54;color:#fff" onclick="abrirModalLlamada(${r.id})" title="Gestionar llamada y WhatsApp">📞</button>
         ${r.certificadoUrl
           ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado cargado">📄</a>`
           : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado cargado">📄</span>`}
@@ -1878,17 +1895,41 @@ async function eliminarSeleccionados() {
   setSyncStatus('ok', `✅ ${eliminados} registro(s) eliminado(s). Supabase: ${restantes.length} registro(s)`);
 }
 
+// Normaliza nombre de funcionario: elimina año al final (Heidy2026 → Heidy)
+function normFun(nombre) {
+  return (nombre || '').trim().replace(/\s*\d{4,}$/, '').trim().toLowerCase();
+}
+
+let _soloCompletos = false;
+const CAMPOS_OBLIGATORIOS = ['tipoId','identificacion','primerNombre','primerApellido',
+  'fechaNacimiento','sexo','municipio','tipoDiscapacidad','regimen'];
+
+function esCompleto(r) {
+  return CAMPOS_OBLIGATORIOS.every(c => (r[c]||'').toString().trim() !== '');
+}
+
+function toggleSoloCompletos() {
+  _soloCompletos = !_soloCompletos;
+  const btn = document.getElementById('btnSoloCompletos');
+  if (btn) {
+    btn.style.background = _soloCompletos ? '#2E7D32' : '#5D4037';
+    btn.textContent = _soloCompletos ? '☑ Solo completos ✓' : '☑ Solo completos';
+  }
+  filtrar();
+}
+
 function filtrar() {
   const q    = document.getElementById('fBuscar').value.toLowerCase();
-  const func = (document.getElementById('fFuncionario')?.value || '').toLowerCase();
+  const func = normFun(document.getElementById('fFuncionario')?.value || '');
   const all  = getLocal();
   renderRecs(all.filter(r => {
     const nom = [r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ').toLowerCase();
     const okQ = !q || nom.includes(q)||(r.identificacion||'').includes(q)||
                 (r.municipio||'').toLowerCase().includes(q)||
                 (r.tipoDiscapacidad||'').toLowerCase().includes(q);
-    const okF = !func || (r.registradoPor||'').toLowerCase() === func;
-    return okQ && okF;
+    const okF = !func || normFun(r.registradoPor) === func;
+    const okC = !_soloCompletos || esCompleto(r);
+    return okQ && okF && okC;
   }));
 }
 
@@ -1896,12 +1937,17 @@ function poblarFiltroFuncionario() {
   const sel = document.getElementById('fFuncionario');
   if (!sel) return;
   if (!esSuperAdmin(getSess())) { sel.style.display = 'none'; return; }
-  const funcionarios = [...new Set(
-    getLocal().map(r => (r.registradoPor||'').trim()).filter(Boolean)
-  )].sort();
-  const valorActual = sel.value;
+  // Normalizar y deduplicar (Heidy + Heidy2026 → Heidy)
+  const mapaCanon = {};
+  getLocal().forEach(r => {
+    const raw   = (r.registradoPor||'').trim();
+    const canon = normFun(raw);
+    if (canon && !mapaCanon[canon]) mapaCanon[canon] = raw.replace(/\s*\d{4,}$/, '').trim();
+  });
+  const funcionarios = Object.values(mapaCanon).sort();
+  const valorActual = normFun(sel.value);
   sel.innerHTML = '<option value="">— Todos los funcionarios —</option>' +
-    funcionarios.map(f => `<option value="${f}"${f.toLowerCase()===valorActual?'selected':''}>${f}</option>`).join('');
+    funcionarios.map(f => `<option value="${f}"${normFun(f)===valorActual?'selected':''}>${f}</option>`).join('');
   sel.style.display = funcionarios.length ? '' : 'none';
 }
 
@@ -2259,6 +2305,76 @@ async function guardarNota(id) {
 }
 
 function cerrarModal() { document.getElementById('modalBg').classList.add('hidden'); }
+function cerrarModalLlamada() { document.getElementById('modalLlamadaBg').classList.add('hidden'); }
+
+function abrirModalLlamada(id) {
+  const r = getLocal().find(x => String(x.id) === String(id));
+  if (!r) return;
+  const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ');
+  const tel = (r.telefono || '').replace(/\D/g,'');
+  const telCol = tel.startsWith('57') ? tel : '57' + tel;
+  const waUrl  = tel ? `https://wa.me/${telCol}` : null;
+  const telUrl = tel ? `tel:+${telCol}` : null;
+
+  document.getElementById('modalLlamadaTit').textContent = `📞 Llamada — ${nom}`;
+  document.getElementById('modalLlamadaCont').innerHTML = `
+    <div style="margin-bottom:14px">
+      <div style="font-size:0.82rem;color:#555;margin-bottom:6px">
+        <b>Paciente:</b> ${nom}<br>
+        <b>Teléfono:</b> ${r.telefono || '<span style="color:#aaa">No registrado</span>'}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${telUrl ? `<a href="${telUrl}" class="btn btn-sm" style="background:#1B6B2A;color:#fff;text-decoration:none">📞 Llamar</a>` : ''}
+        ${waUrl  ? `<a href="${waUrl}"  class="btn btn-sm" style="background:#25D366;color:#fff;text-decoration:none" target="_blank">💬 WhatsApp</a>` : ''}
+        ${!tel   ? `<span style="font-size:0.82rem;color:#E74C3C">⚠️ Sin número registrado. Edite el registro para agregar teléfono.</span>` : ''}
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div style="margin-top:12px">
+      <div style="font-weight:700;font-size:0.88rem;margin-bottom:8px;color:#075E54">📸 Captura de llamada</div>
+      ${r.capturaLlamadaUrl ? `
+        <div style="margin-bottom:10px">
+          <div style="font-size:0.78rem;color:#555;margin-bottom:5px">Última captura guardada:</div>
+          <a href="${r.capturaLlamadaUrl}" target="_blank">
+            <img src="${r.capturaLlamadaUrl}" style="max-width:100%;max-height:180px;object-fit:contain;border:1px solid #ddd;border-radius:6px"
+                 onerror="this.outerHTML='<a href=\\'${r.capturaLlamadaUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm\\' style=\\'background:#E8A000;color:#fff;text-decoration:none\\'>📄 Ver captura</a>'">
+          </a>
+        </div>` : '<div style="font-size:0.8rem;color:#aaa;margin-bottom:10px">Sin captura guardada</div>'}
+      <label style="display:block;font-size:0.8rem;color:#555;margin-bottom:5px">Subir nueva captura (imagen o PDF):</label>
+      <input type="file" id="inputCaptura_${id}" accept="image/*,application/pdf"
+             style="width:100%;margin-bottom:8px;font-size:0.8rem">
+      <button class="btn btn-g btn-sm" onclick="subirCaptura(${id})" id="btnSubirCaptura_${id}">
+        ⬆️ Guardar captura
+      </button>
+      <span id="stCaptura_${id}" style="font-size:0.78rem;color:#555;margin-left:8px"></span>
+    </div>`;
+  document.getElementById('modalLlamadaBg').classList.remove('hidden');
+}
+
+async function subirCaptura(id) {
+  const input = document.getElementById(`inputCaptura_${id}`);
+  const btn   = document.getElementById(`btnSubirCaptura_${id}`);
+  const st    = document.getElementById(`stCaptura_${id}`);
+  if (!input?.files[0]) { st.textContent = '⚠️ Seleccione un archivo primero.'; return; }
+  btn.disabled = true; st.textContent = 'Subiendo...';
+  try {
+    const url = await api.uploadCertificado(id, input.files[0],
+      (i, t) => { st.textContent = `Subiendo ${Math.round(i/t*100)}%...`; });
+    const local = getLocal();
+    const idx = local.findIndex(r => String(r.id) === String(id));
+    if (idx >= 0) {
+      local[idx].capturaLlamadaUrl = url;
+      setLocal(local);
+      await supa.saveRecord(local[idx]).catch(()=>{});
+    }
+    st.innerHTML = '✅ <a href="' + url + '" target="_blank">Ver captura</a>';
+    input.value = '';
+    // Actualizar botón de la fila
+    renderRecs(getLocal());
+  } catch(e) {
+    st.textContent = '❌ Error: ' + (e.message || e);
+  } finally { btn.disabled = false; }
+}
 
 // ── Export / Import ───────────────────────────────────────────
 function exportarJSON() {
