@@ -1876,6 +1876,9 @@ function renderRecs(recs) {
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
         <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
         <button class="btn btn-sm" style="background:#075E54;color:#fff" onclick="abrirModalLlamada(${r.id})" title="Gestionar llamada y WhatsApp">📞</button>
+        ${r.capturaLlamadaUrl
+          ? `<a href="${r.capturaLlamadaUrl}" target="_blank" class="btn btn-sm" style="background:#00897B;color:#fff;text-decoration:none" title="Ver captura de llamada/seguimiento">📸</a>`
+          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.5" title="Sin captura de seguimiento">📸</span>`}
         ${r.certificadoUrl
           ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado cargado">📄</a>`
           : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado cargado">📄</span>`}
