@@ -859,8 +859,15 @@ const supa = {
     if (!r.ok) throw new Error('Supabase save ' + r.status);
   },
   async deleteRecord(id) {
-    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?id=eq.' + id, { method: 'DELETE', headers: this._h() });
-    if (!r.ok) throw new Error('Supabase ' + r.status);
+    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?id=eq.' + id, {
+      method: 'DELETE',
+      headers: { ...this._h(), 'Prefer': 'return=minimal' }
+    });
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { const j = await r.json(); msg += ': ' + (j.message || j.hint || JSON.stringify(j)); } catch(_){}
+      throw new Error('Supabase DELETE ' + msg);
+    }
   },
   async loadUsers() {
     const r = await fetch(SUPA_URL + '/rest/v1/usuarios?select=*&order=id.asc', { headers: this._h() });
@@ -1965,7 +1972,9 @@ async function eliminar(id) {
     await supa.deleteRecord(id);
     setSyncStatus('ok', `✅ Supabase: ${getLocal().length} registro(s)`);
   } catch(e) {
-    setSyncStatus('err', 'Error al eliminar: ' + e.message);
+    setSyncStatus('err', '❌ Error al eliminar: ' + e.message);
+    alert('❌ No se pudo eliminar en Supabase:\n\n' + e.message +
+      '\n\nSi el error es "permission denied" o "RLS", ejecute en Supabase SQL Editor:\nCREATE POLICY "allow_delete_anon" ON registros_discapacidad FOR DELETE USING (true);');
     // Tombstone garantiza que aunque falle ahora, en la próxima sync no vuelve
   }
 }
