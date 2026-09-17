@@ -82,9 +82,11 @@ textarea{resize:vertical;min-height:68px}
 .al-err{background:#FADBD8;color:#922B21;border:1px solid #F1948A}
 .al-inf{background:#D6EAF8;color:#1A5276;border:1px solid #85C1E9}
 .tw{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:0.81rem}
-th{background:var(--dark);color:#fff;padding:9px 10px;text-align:left;white-space:nowrap}
-td{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:middle}
+table{width:100%;border-collapse:collapse;font-size:0.79rem}
+th{background:var(--dark);color:#fff;padding:6px 7px;text-align:left;white-space:nowrap}
+td{padding:5px 7px;border-bottom:1px solid #eee;vertical-align:middle}
+.col-opc{display:none}
+.col-exp .col-opc{display:table-cell}
 tr:hover td{background:#fafafa}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:20px}
 .stat{background:#fff;border-radius:10px;padding:17px;
@@ -591,6 +593,7 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-y btn-sm" onclick="exportarCSV()">⬇ CSV</button>
         <button class="btn btn-sm" style="background:#217346;color:#fff" onclick="exportarXLSX()">⬇ Excel</button>
         <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(null)">📋 Informe PDF</button>
+        <button id="btnMasCols" class="btn btn-sm" style="background:#6c757d;color:#fff" onclick="toggleColumnas()">⊞ Más columnas</button>
         <button class="btn btn-g btn-sm" onclick="sincronizar()">🔄 Sincronizar</button>
         <button class="btn btn-sm" style="background:#E74C3C;color:#fff"
                 onclick="if(confirm('¿Eliminar TODOS los registros?'))borrarTodo()">🗑 Borrar Todo</button>
@@ -602,10 +605,13 @@ tr:hover td{background:#fafafa}
       </div>
       <div class="tw"><table>
         <thead><tr id="recHead">
-          <th id="thCheck" style="display:none;width:34px"><input type="checkbox" id="chkTodos" title="Seleccionar todo" onchange="toggleSeleccionTodos(this)"></th>
-          <th>#</th><th>Tipo/ID</th><th>Nombre</th><th>F.Nac.</th><th>Edad</th>
-          <th>Sexo</th><th>Dpto/Municipio</th><th>Discapacidad</th><th>Régimen</th>
-          <th>Rehab.</th><th title="Estado Tratamiento">Trat.</th><th>F.Registro</th><th>Acciones</th></tr></thead>
+          <th id="thCheck" style="display:none;width:30px"><input type="checkbox" id="chkTodos" title="Seleccionar todo" onchange="toggleSeleccionTodos(this)"></th>
+          <th>#</th><th>Tipo/ID</th><th>Nombre</th>
+          <th class="col-opc">F.Nac.</th><th class="col-opc">Edad</th><th class="col-opc">Sexo</th>
+          <th>Municipio</th><th>Discapacidad</th>
+          <th class="col-opc">Régimen</th>
+          <th>Rehab.</th><th title="Estado Tratamiento">Trat.</th>
+          <th class="col-opc">F.Registro</th><th>Acciones</th></tr></thead>
         <tbody id="recBody"></tbody>
       </table></div>
       <p id="recCount" style="margin-top:9px;font-size:0.78rem;color:#777"></p>
@@ -1769,7 +1775,7 @@ function renderRecs(recs) {
   // Mostrar columna checkbox solo para superadmin
   document.getElementById('thCheck').style.display = esSA ? '' : 'none';
   if (!recs.length) {
-    tbody.innerHTML=`<tr><td colspan="${esSA?14:13}" style="text-align:center;padding:28px;color:#aaa">Sin registros</td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="${esSA?9:8}" style="text-align:center;padding:28px;color:#aaa">Sin registros</td></tr>`;
     document.getElementById('recCount').textContent=''; return;
   }
   tbody.innerHTML=recs.map((r,i)=>{
@@ -1789,10 +1795,12 @@ function renderRecs(recs) {
       ${chkCell}
       <td>${i+1}</td>
       <td><span class="bdg bdg-b">${r.tipoId||''}</span> ${r.identificacion||'-'}</td>
-      <td>${nom||'-'}</td><td>${r.fechaNacimiento||'-'}</td><td>${r.edad||'-'}</td>
-      <td>${r.sexo||'-'}</td><td>${r.departamento||''} / ${r.municipio||'-'}</td>
+      <td>${nom||'-'}</td>
+      <td class="col-opc">${r.fechaNacimiento||'-'}</td><td class="col-opc">${r.edad||'-'}</td><td class="col-opc">${r.sexo||'-'}</td>
+      <td>${r.municipio||'-'}</td>
       <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
-      <td>${r.regimen||'-'}</td><td>${rehab}</td><td style="text-align:center">${trat}</td><td>${fReg}</td>
+      <td class="col-opc">${r.regimen||'-'}</td><td>${rehab}</td><td style="text-align:center">${trat}</td>
+      <td class="col-opc">${fReg}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
         <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
@@ -1828,6 +1836,14 @@ function actualizarBarraSeleccion() {
 function toggleSeleccionTodos(cb) {
   document.querySelectorAll('.chk-rec').forEach(c => c.checked = cb.checked);
   actualizarBarraSeleccion();
+}
+
+function toggleColumnas() {
+  const tabla = document.querySelector('#vRecs table');
+  const btn   = document.getElementById('btnMasCols');
+  if (!tabla) return;
+  const exp = tabla.classList.toggle('col-exp');
+  btn.textContent = exp ? '⊟ Menos columnas' : '⊞ Más columnas';
 }
 
 function deseleccionarTodos() {
