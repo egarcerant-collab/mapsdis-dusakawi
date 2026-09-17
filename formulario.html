@@ -31,14 +31,16 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--d
 .auth-logo .sub{font-size:0.75rem;color:#666;margin-top:8px;line-height:1.5;font-weight:600}
 .hdr{background:linear-gradient(135deg,var(--pri),var(--pri-dark));color:#fff;
   padding:10px 24px;display:flex;align-items:center;gap:14px;
-  box-shadow:0 3px 12px rgba(0,0,0,0.25)}
+  box-shadow:0 3px 12px rgba(0,0,0,0.25);
+  position:sticky;top:0;z-index:200}
 .hdr img.logo{height:52px;object-fit:contain;filter:brightness(0) invert(1)}
 .hdr-txt h1{font-size:1.2rem;font-weight:800;letter-spacing:.5px}
 .hdr-txt p{font-size:0.71rem;opacity:.88;margin-top:2px}
 .hdr-r{margin-left:auto;display:flex;align-items:center;gap:10px}
 .hdr-user{font-size:0.78rem;background:rgba(255,255,255,.15);padding:4px 12px;border-radius:20px}
 .sync-badge{font-size:0.74rem;background:rgba(0,0,0,.25);padding:3px 10px;border-radius:12px;color:#fff}
-.nav{background:var(--pri-dark);padding:7px 20px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.nav{background:var(--pri-dark);padding:7px 20px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;
+  position:sticky;top:72px;z-index:199;box-shadow:0 3px 8px rgba(0,0,0,0.2)}
 .nb{background:transparent;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.25);
   border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem;transition:all .2s;font-family:inherit}
 .nb:hover,.nb.on{background:var(--pri-light);color:#fff;border-color:var(--pri-light)}
@@ -589,6 +591,9 @@ tr:hover td{background:#fafafa}
     <div class="card"><div class="sh sh-dark">📋 Registros Almacenados</div><div class="sb">
       <div class="sb-bar">
         <input type="text" id="fBuscar" name="dusa_srch_x7q" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
+        <select id="fFuncionario" style="display:none;min-width:180px;max-width:240px" onchange="filtrar()">
+          <option value="">— Todos los funcionarios —</option>
+        </select>
         <button class="btn btn-b btn-sm" onclick="exportarJSON()">⬇ JSON</button>
         <button class="btn btn-y btn-sm" onclick="exportarCSV()">⬇ CSV</button>
         <button class="btn btn-sm" style="background:#217346;color:#fff" onclick="exportarXLSX()">⬇ Excel</button>
@@ -1217,6 +1222,7 @@ async function sincronizar() {
     if (document.getElementById('vRecs') &&
         !document.getElementById('vRecs').classList.contains('hidden')) {
       renderRecs(mergedFinal);
+      poblarFiltroFuncionario();
     }
 
     const pendMsg = quedanLocal.length > 0 ? ` (${quedanLocal.length} pendiente(s))` : '';
@@ -1336,6 +1342,7 @@ function vista(viewName) {
     setTimeout(_limpiar, 150);
     setTimeout(_limpiar, 400);
     renderRecs(getLocal());
+    poblarFiltroFuncionario();
     sincronizar();
   }
   if (viewName==='admin') renderAdmin();
@@ -1872,14 +1879,30 @@ async function eliminarSeleccionados() {
 }
 
 function filtrar() {
-  const q=document.getElementById('fBuscar').value.toLowerCase();
-  const all=getLocal();
-  renderRecs(!q?all:all.filter(r=>{
-    const nom=[r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ').toLowerCase();
-    return nom.includes(q)||(r.identificacion||'').includes(q)||
-           (r.municipio||'').toLowerCase().includes(q)||
-           (r.tipoDiscapacidad||'').toLowerCase().includes(q);
+  const q    = document.getElementById('fBuscar').value.toLowerCase();
+  const func = (document.getElementById('fFuncionario')?.value || '').toLowerCase();
+  const all  = getLocal();
+  renderRecs(all.filter(r => {
+    const nom = [r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ').toLowerCase();
+    const okQ = !q || nom.includes(q)||(r.identificacion||'').includes(q)||
+                (r.municipio||'').toLowerCase().includes(q)||
+                (r.tipoDiscapacidad||'').toLowerCase().includes(q);
+    const okF = !func || (r.registradoPor||'').toLowerCase() === func;
+    return okQ && okF;
   }));
+}
+
+function poblarFiltroFuncionario() {
+  const sel = document.getElementById('fFuncionario');
+  if (!sel) return;
+  if (!esSuperAdmin(getSess())) { sel.style.display = 'none'; return; }
+  const funcionarios = [...new Set(
+    getLocal().map(r => (r.registradoPor||'').trim()).filter(Boolean)
+  )].sort();
+  const valorActual = sel.value;
+  sel.innerHTML = '<option value="">— Todos los funcionarios —</option>' +
+    funcionarios.map(f => `<option value="${f}"${f.toLowerCase()===valorActual?'selected':''}>${f}</option>`).join('');
+  sel.style.display = funcionarios.length ? '' : 'none';
 }
 
 async function eliminar(id) {
