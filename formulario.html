@@ -595,8 +595,15 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-sm" style="background:#E74C3C;color:#fff"
                 onclick="if(confirm('¿Eliminar TODOS los registros?'))borrarTodo()">🗑 Borrar Todo</button>
       </div>
+      <div id="barraSeleccion" style="display:none;background:#FFF3CD;border:1px solid #E8A000;border-radius:6px;padding:8px 14px;margin-bottom:8px;display:none;align-items:center;gap:12px">
+        <span id="lblSeleccionados" style="font-size:0.9rem;font-weight:600;color:#856404"></span>
+        <button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminarSeleccionados()">🗑️ Eliminar seleccionados</button>
+        <button class="btn btn-sm" style="background:#6c757d;color:#fff" onclick="deseleccionarTodos()">✕ Cancelar</button>
+      </div>
       <div class="tw"><table>
-        <thead><tr><th>#</th><th>Tipo/ID</th><th>Nombre</th><th>F.Nac.</th><th>Edad</th>
+        <thead><tr id="recHead">
+          <th id="thCheck" style="display:none;width:34px"><input type="checkbox" id="chkTodos" title="Seleccionar todo" onchange="toggleSeleccionTodos(this)"></th>
+          <th>#</th><th>Tipo/ID</th><th>Nombre</th><th>F.Nac.</th><th>Edad</th>
           <th>Sexo</th><th>Dpto/Municipio</th><th>Discapacidad</th><th>Régimen</th>
           <th>Rehab.</th><th title="Estado Tratamiento">Trat.</th><th>F.Registro</th><th>Acciones</th></tr></thead>
         <tbody id="recBody"></tbody>
@@ -1758,8 +1765,11 @@ async function guardar(e) {
 // ── Tabla registros ───────────────────────────────────────────
 function renderRecs(recs) {
   const tbody=document.getElementById('recBody');
+  const esSA=esSuperAdmin(getSess());
+  // Mostrar columna checkbox solo para superadmin
+  document.getElementById('thCheck').style.display = esSA ? '' : 'none';
   if (!recs.length) {
-    tbody.innerHTML='<tr><td colspan="13" style="text-align:center;padding:28px;color:#aaa">Sin registros</td></tr>';
+    tbody.innerHTML=`<tr><td colspan="${esSA?14:13}" style="text-align:center;padding:28px;color:#aaa">Sin registros</td></tr>`;
     document.getElementById('recCount').textContent=''; return;
   }
   tbody.innerHTML=recs.map((r,i)=>{
@@ -1772,7 +1782,11 @@ function renderRecs(recs) {
       :r.estadoTratamiento==='Incompleto'
       ?'<span title="Tratamiento Incompleto" style="font-size:1.1rem">⚠️</span>'
       :'<span style="color:#bbb">—</span>';
+    const chkCell = esSA
+      ? `<td style="text-align:center"><input type="checkbox" class="chk-rec" data-id="${r.id}" onchange="actualizarBarraSeleccion()"></td>`
+      : '';
     return `<tr>
+      ${chkCell}
       <td>${i+1}</td>
       <td><span class="bdg bdg-b">${r.tipoId||''}</span> ${r.identificacion||'-'}</td>
       <td>${nom||'-'}</td><td>${r.fechaNacimiento||'-'}</td><td>${r.edad||'-'}</td>
@@ -1786,11 +1800,59 @@ function renderRecs(recs) {
           ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado cargado">📄</a>`
           : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado cargado">📄</span>`}
         <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(${r.id})" title="Generar informe PDF de este paciente">📋</button>
-        ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
-        ${esSuperAdmin(getSess()) ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
+        ${esSA ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
+        ${esSA ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
   }).join('');
   document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
+  actualizarBarraSeleccion();
+}
+
+function actualizarBarraSeleccion() {
+  const checks = [...document.querySelectorAll('.chk-rec:checked')];
+  const barra = document.getElementById('barraSeleccion');
+  const lbl   = document.getElementById('lblSeleccionados');
+  const todos  = document.querySelectorAll('.chk-rec');
+  const chkTodos = document.getElementById('chkTodos');
+  if (checks.length > 0) {
+    barra.style.display = 'flex';
+    lbl.textContent = `${checks.length} de ${todos.length} registro(s) seleccionado(s)`;
+    if (chkTodos) chkTodos.indeterminate = checks.length < todos.length;
+    if (chkTodos) chkTodos.checked = checks.length === todos.length;
+  } else {
+    barra.style.display = 'none';
+    if (chkTodos) { chkTodos.checked = false; chkTodos.indeterminate = false; }
+  }
+}
+
+function toggleSeleccionTodos(cb) {
+  document.querySelectorAll('.chk-rec').forEach(c => c.checked = cb.checked);
+  actualizarBarraSeleccion();
+}
+
+function deseleccionarTodos() {
+  document.querySelectorAll('.chk-rec').forEach(c => c.checked = false);
+  const chkTodos = document.getElementById('chkTodos');
+  if (chkTodos) { chkTodos.checked = false; chkTodos.indeterminate = false; }
+  actualizarBarraSeleccion();
+}
+
+async function eliminarSeleccionados() {
+  if (!esSuperAdmin(getSess())) { alert('Solo el Super Administrador puede eliminar registros.'); return; }
+  const ids = [...document.querySelectorAll('.chk-rec:checked')].map(c => c.dataset.id);
+  if (!ids.length) return;
+  if (!confirm(`¿Eliminar ${ids.length} registro(s) seleccionado(s) permanentemente? Esta acción no se puede deshacer.`)) return;
+  setSyncStatus('carg', `Eliminando ${ids.length} registro(s)...`);
+  let eliminados = 0;
+  for (const id of ids) {
+    markDeleted(id);
+    const local = getLocal().filter(r => String(r.id) !== String(id));
+    setLocal(local);
+    try { await supa.deleteRecord(id); eliminados++; } catch(e) { console.warn('Error al eliminar', id, e); }
+  }
+  const restantes = getLocal();
+  renderRecs(restantes); actualizarDash();
+  setSyncStatus('ok', `✅ ${eliminados} registro(s) eliminado(s). Supabase: ${restantes.length} registro(s)`);
 }
 
 function filtrar() {
