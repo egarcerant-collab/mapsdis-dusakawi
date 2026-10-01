@@ -1112,19 +1112,24 @@ const getQueue  = () => JSON.parse(localStorage.getItem(K_QUEUE) || '[]');
 const setQueue  = q  => localStorage.setItem(K_QUEUE, JSON.stringify(q));
 
 // ── Tombstone: IDs eliminados (evita que otros dispositivos los resuciten) ─
-const K_DELETED = 'dusa_deleted';
-const getDeleted = () => JSON.parse(localStorage.getItem(K_DELETED) || '{}');
-const setDeleted = d  => localStorage.setItem(K_DELETED, JSON.stringify(d));
+const K_DELETED      = 'dusa_deleted';
+const K_DELETED_USR  = 'dusa_deleted_users';
+const getDeleted     = () => JSON.parse(localStorage.getItem(K_DELETED)     || '{}');
+const setDeleted     = d  => localStorage.setItem(K_DELETED,     JSON.stringify(d));
+const getDeletedUsr  = () => JSON.parse(localStorage.getItem(K_DELETED_USR) || '{}');
+const setDeletedUsr  = d  => localStorage.setItem(K_DELETED_USR, JSON.stringify(d));
 
-function markDeleted(id) {
-  const d = getDeleted();
+function _tombstone(id, getter, setter) {
+  const d = getter();
   d[String(id)] = Date.now();
-  // Purgar entradas > 30 días
-  const maxAge = 30 * 24 * 3600 * 1000;
+  const maxAge = 60 * 24 * 3600 * 1000; // 60 días
   Object.keys(d).forEach(k => { if (Date.now() - d[k] > maxAge) delete d[k]; });
-  setDeleted(d);
+  setter(d);
 }
-const wasDeleted = id => !!getDeleted()[String(id)];
+function markDeleted(id)    { _tombstone(id, getDeleted,    setDeleted); }
+function markDeletedUsr(id) { _tombstone(id, getDeletedUsr, setDeletedUsr); }
+const wasDeleted    = id => !!getDeleted()   [String(id)];
+const wasDeletedUsr = id => !!getDeletedUsr()[String(id)];
 
 function encolarRegistro(rec) {
   const q = getQueue(); q.push(rec); setQueue(q);
@@ -2994,24 +2999,21 @@ async function renderAdmin() {
   if (puedeSync) {
     try {
       const driveUsers = await api.loadUsers();
-      // Merge inteligente: gana la versión con updatedAt más reciente
+      // Supabase es fuente de verdad para existencia de usuarios.
+      // Un usuario local solo se re-sube si existe en Supabase (no fue borrado),
+      // su versión local es más reciente y no está en tombstone.
       const merged = {};
-      [...driveUsers, ...users].forEach(u => {
+      driveUsers.forEach(u => { merged[String(u.id)] = u; });
+      users.forEach(u => {
         const key = String(u.id);
-        if (!merged[key]) { merged[key] = u; return; }
-        const tsExist = merged[key].updatedAt || merged[key].createdAt || '';
-        const tsNew   = u.updatedAt || u.createdAt || '';
-        if (tsNew > tsExist) merged[key] = u;   // local más nuevo → prevalece
+        if (wasDeletedUsr(u.id)) return;         // tombstone → nunca resucitar
+        if (!merged[key]) return;                // ausente en Supabase = fue borrado
+        const uTs = u.updatedAt || u.createdAt || '';
+        const dTs = merged[key].updatedAt || merged[key].createdAt || '';
+        if (uTs > dTs) { merged[key] = u; api.saveUser(u).catch(() => {}); }
       });
       users = Object.values(merged);
       setUsers(users);
-      // Si hay usuarios locales más nuevos que Drive, resubirlos
-      users.forEach(u => {
-        const drv = driveUsers.find(d => String(d.id) === String(u.id));
-        const uTs  = u.updatedAt || u.createdAt || '';
-        const dTs  = drv ? (drv.updatedAt || drv.createdAt || '') : '';
-        if (!drv || uTs > dTs) api.saveUser(u).catch(() => {});
-      });
     } catch(_) {
       alerta('alAdmin', '⚠ No se pudo sincronizar usuarios desde Drive (usando datos locales).', 'err');
     }
@@ -3180,6 +3182,7 @@ async function eliminarUsuario(id) {
   const u = getUsers().find(x => x.id === id);
   if (!u) return;
   if (!confirm('¿Eliminar al usuario @' + u.username + '? Esta acción no se puede deshacer.')) return;
+  markDeletedUsr(id);                              // tombstone: evita resurrección
   setUsers(getUsers().filter(x => x.id !== id));
   const puedeDel = navigator.onLine && (api._url() || api._gsOk());
   if (puedeDel) {
