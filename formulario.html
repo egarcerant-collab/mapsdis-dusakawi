@@ -2384,14 +2384,46 @@ async function guardarNota(id) {
 function cerrarModal() { document.getElementById('modalBg').classList.add('hidden'); }
 function cerrarModalLlamada() { document.getElementById('modalLlamadaBg').classList.add('hidden'); }
 
+const _INDICATIVOS = [
+  {c:'57',p:'🇨🇴 +57 Colombia'},{c:'58',p:'🇻🇪 +58 Venezuela'},
+  {c:'1',p:'🇺🇸 +1 USA/CAN'},{c:'51',p:'🇵🇪 +51 Perú'},
+  {c:'52',p:'🇲🇽 +52 México'},{c:'593',p:'🇪🇨 +593 Ecuador'},
+  {c:'56',p:'🇨🇱 +56 Chile'},{c:'54',p:'🇦🇷 +54 Argentina'},
+  {c:'55',p:'🇧🇷 +55 Brasil'},{c:'507',p:'🇵🇦 +507 Panamá'},
+  {c:'503',p:'🇸🇻 +503 El Salvador'},{c:'34',p:'🇪🇸 +34 España'},
+];
+
+function _detectarIndicativo(val) {
+  const n = (val||'').replace(/\D/g,'');
+  const sorted = [..._INDICATIVOS].sort((a,b)=>b.c.length-a.c.length);
+  const found = sorted.find(x => n.startsWith(x.c));
+  return found ? found.c : '57';
+}
+
+function _numSinIndicativo(val) {
+  const n = (val||'').replace(/\D/g,'');
+  if (!n) return '';
+  const ind = _detectarIndicativo(n);
+  return n.startsWith(ind) ? n.slice(ind.length) : n;
+}
+
+function _optsIndicativo(val) {
+  const sel = _detectarIndicativo(val);
+  return _INDICATIVOS.map(x =>
+    `<option value="${x.c}"${x.c===sel?' selected':''}>${x.p}</option>`
+  ).join('');
+}
+
 async function guardarTelModal(id, cual) {
   const inp = document.getElementById(`inpTel${cual}_${id}`);
+  const sel = document.getElementById(`selInd${cual}_${id}`);
   const st  = document.getElementById(`stTel${cual}_${id}`);
   if (!inp) return;
   const num = inp.value.replace(/\D/g,'');
   if (num.length < 7) { st.textContent = '⚠️ Ingrese un número válido (mín. 7 dígitos)'; st.style.color='#E74C3C'; return; }
   const campo = cual === 1 ? 'telefono' : 'telefono2';
-  const val   = '57' + num;
+  const ind   = sel ? sel.value : '57';
+  const val   = ind + num;
   st.textContent = 'Guardando...'; st.style.color='#555';
   const local = getLocal();
   const idx   = local.findIndex(r => String(r.id) === String(id));
@@ -2411,17 +2443,16 @@ function abrirModalLlamada(id) {
   const r = getLocal().find(x => String(x.id) === String(id));
   if (!r) return;
   const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ');
-  const tel = (r.telefono || '').replace(/\D/g,'');
-  const telCol = tel.startsWith('57') ? tel : '57' + tel;
-  const waUrl  = tel ? `https://wa.me/${telCol}` : null;
-  const telUrl = tel ? `tel:+${telCol}` : null;
-
-  document.getElementById('modalLlamadaTit').textContent = `📞 Llamada — ${nom}`;
-
-  const tel2 = (r.telefono2 || '').replace(/\D/g,'');
-  const tel2Col = tel2 ? (tel2.startsWith('57') ? tel2 : '57' + tel2) : null;
+  const tel    = (r.telefono  || '').replace(/\D/g,'');
+  const tel2   = (r.telefono2 || '').replace(/\D/g,'');
+  const telCol  = tel  ? tel  : null;
+  const tel2Col = tel2 ? tel2 : null;
+  const waUrl   = telCol  ? `https://wa.me/${telCol}`  : null;
+  const telUrl  = telCol  ? `tel:+${telCol}`  : null;
   const wa2Url  = tel2Col ? `https://wa.me/${tel2Col}` : null;
   const tel2Url = tel2Col ? `tel:+${tel2Col}` : null;
+
+  document.getElementById('modalLlamadaTit').textContent = `📞 Llamada — ${nom}`;
 
   document.getElementById('modalLlamadaCont').innerHTML = `
     <div style="margin-bottom:14px">
@@ -2438,11 +2469,13 @@ function abrirModalLlamada(id) {
           </div>` : `
           <div style="font-size:0.8rem;color:#E74C3C;margin-bottom:6px">⚠️ Sin número registrado</div>`}
         <div style="display:flex;align-items:center;gap:6px">
-          <span style="background:#e8f5e9;border:1px solid #1B6B2A;border-right:none;padding:5px 8px;border-radius:6px 0 0 6px;font-size:0.85rem;font-weight:700;color:#1B6B2A;white-space:nowrap">+57</span>
-          <input id="inpTel1_${id}" type="tel" placeholder="${tel || 'Ej: 3001234567'}"
-                 value="${r.telefono ? r.telefono.replace(/^\+?57/,'').replace(/\D/g,'') : ''}"
-                 style="flex:1;padding:5px 8px;border:1px solid #1B6B2A;border-radius:0 6px 6px 0;font-size:0.88rem;min-width:0"
-                 maxlength="10" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10)">
+          <select id="selInd1_${id}" style="padding:5px 4px;border:1px solid #1B6B2A;border-radius:6px;font-size:0.82rem;font-weight:700;color:#1B6B2A;background:#e8f5e9;max-width:90px">
+            ${_optsIndicativo(r.telefono)}
+          </select>
+          <input id="inpTel1_${id}" type="tel" placeholder="Ej: 3001234567"
+                 value="${_numSinIndicativo(r.telefono)}"
+                 style="flex:1;padding:5px 8px;border:1px solid #1B6B2A;border-radius:6px;font-size:0.88rem;min-width:0"
+                 maxlength="12" oninput="this.value=this.value.replace(/\D/g,'').slice(0,12)">
           <button class="btn btn-sm" onclick="guardarTelModal(${id},1)"
                   style="background:#1B6B2A;color:#fff;white-space:nowrap">💾 Guardar</button>
         </div>
@@ -2460,11 +2493,13 @@ function abrirModalLlamada(id) {
           </div>` : `
           <div style="font-size:0.8rem;color:#aaa;margin-bottom:6px">Sin teléfono alternativo</div>`}
         <div style="display:flex;align-items:center;gap:6px">
-          <span style="background:#f3e5f5;border:1px solid #6A1B9A;border-right:none;padding:5px 8px;border-radius:6px 0 0 6px;font-size:0.85rem;font-weight:700;color:#6A1B9A;white-space:nowrap">+57</span>
-          <input id="inpTel2_${id}" type="tel" placeholder="${tel2 || 'Ej: 3009876543'}"
-                 value="${r.telefono2 ? r.telefono2.replace(/^\+?57/,'').replace(/\D/g,'') : ''}"
-                 style="flex:1;padding:5px 8px;border:1px solid #6A1B9A;border-radius:0 6px 6px 0;font-size:0.88rem;min-width:0"
-                 maxlength="10" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10)">
+          <select id="selInd2_${id}" style="padding:5px 4px;border:1px solid #6A1B9A;border-radius:6px;font-size:0.82rem;font-weight:700;color:#6A1B9A;background:#f3e5f5;max-width:90px">
+            ${_optsIndicativo(r.telefono2)}
+          </select>
+          <input id="inpTel2_${id}" type="tel" placeholder="Ej: 3009876543"
+                 value="${_numSinIndicativo(r.telefono2)}"
+                 style="flex:1;padding:5px 8px;border:1px solid #6A1B9A;border-radius:6px;font-size:0.88rem;min-width:0"
+                 maxlength="12" oninput="this.value=this.value.replace(/\D/g,'').slice(0,12)">
           <button class="btn btn-sm" onclick="guardarTelModal(${id},2)"
                   style="background:#6A1B9A;color:#fff;white-space:nowrap">💾 Guardar</button>
         </div>
