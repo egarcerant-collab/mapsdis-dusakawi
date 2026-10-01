@@ -329,6 +329,16 @@ tr:hover td{background:#fafafa}
           <input type="text" name="primerNombre" required placeholder="Primer nombre"></div>
         <div class="fg"><label>Segundo Nombre</label>
           <input type="text" name="segundoNombre" placeholder="Segundo nombre"></div>
+        <div class="fg" style="grid-column:1/-1;max-width:340px">
+          <label>📞 Teléfono de Contacto</label>
+          <div style="display:flex;align-items:center;gap:0">
+            <span style="background:#e8f5e9;border:1px solid #ccc;border-right:none;padding:7px 10px;border-radius:6px 0 0 6px;font-size:0.85rem;font-weight:700;color:#1B6B2A;white-space:nowrap">+57</span>
+            <input type="tel" name="telefono" id="fTelefono"
+                   placeholder="3001234567"
+                   style="border-radius:0 6px 6px 0;min-width:0;flex:1"
+                   maxlength="12" oninput="this.value=this.value.replace(/\D/g,'').slice(0,12)">
+          </div>
+        </div>
       </div></div></div>
 
       <div class="card"><div class="sh sh-green">🧬 2. Datos Demográficos</div><div class="sb"><div class="g4">
@@ -572,8 +582,8 @@ tr:hover td{background:#fafafa}
           <input type="text" name="cuidador" placeholder="Nombre completo del cuidador"></div>
         <div class="fg"><label>Parentesco con el Cuidador</label>
           <input type="text" name="parentescoCuidador" placeholder="Madre, Padre, Cónyuge..."></div>
-        <div class="fg"><label>Teléfono de Contacto</label>
-          <input type="tel" name="telefono" placeholder="Número de contacto"></div>
+        <div class="fg"><label>Teléfono del Cuidador</label>
+          <input type="tel" name="telefonoCuidador" placeholder="Número del cuidador"></div>
       </div></div></div>
 
       <div class="card"><div class="sh sh-green">📝 12. Seguimiento y Observaciones</div><div class="sb"><div class="g2">
@@ -2730,7 +2740,7 @@ function _fichaPDF(r) {
     <div class="campo-g">
       <div class="campo"><label>Cuidador</label><span>${f(r.cuidador)}</span></div>
       <div class="campo"><label>Parentesco</label><span>${f(r.parentescoCuidador)}</span></div>
-      <div class="campo"><label>Teléfono</label><span>${f(r.telefono)}</span></div>
+      <div class="campo"><label>Tel. Cuidador</label><span>${f(r.telefonoCuidador||r.telefono)}</span></div>
       <div class="campo" style="grid-column:1/-1"><label>Conducta a Seguir</label><span>${f(r.conductaSeguir)}</span></div>
       <div class="campo" style="grid-column:1/-1"><label>Observaciones</label><span>${f(r.observacion)}</span></div>
     </div></div>`;
