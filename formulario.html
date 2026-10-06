@@ -2601,7 +2601,7 @@ function abrirMenuAcc(ev, id) {
   ev.stopPropagation();
   const r   = getLocal().find(x => String(x.id) === String(id));
   if (!r) return;
-  const esSA = getSess()?.role === 'superadmin';
+  const esSA = esSuperAdmin(getSess());
   const nom  = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || 'Paciente';
 
   const capturaUrl = r.llamadasLog
