@@ -2093,19 +2093,10 @@ function renderRecs(recs) {
       <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
       <td class="col-opc">${r.regimen||'-'}</td><td>${rehab}</td><td style="text-align:center">${trat}</td>
       <td class="col-opc">${fReg}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
-        <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
-        <button class="btn btn-sm" style="background:#075E54;color:#fff" onclick="abrirModalLlamada(${r.id})" title="Gestionar llamada y seguimiento">📞</button>
-        ${(r.llamadasLog ? r.llamadasLog.filter(c=>c.capturaUrl).length > 0 : !!r.capturaLlamadaUrl)
-          ? `<a href="${(r.llamadasLog ? r.llamadasLog.filter(c=>c.capturaUrl).slice(-1)[0]?.capturaUrl : r.capturaLlamadaUrl)||'#'}" target="_blank" class="btn btn-sm" style="background:#00897B;color:#fff;text-decoration:none" title="Ver captura de seguimiento">📸</a>`
-          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.5" title="Sin captura">📸</span>`}
-        ${r.certificadoUrl
-          ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado">📄</a>`
-          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado">📄</span>`}
-        <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(${r.id})" title="Generar informe PDF">📋</button>
-        ${esSA ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Editar todos los datos del registro">✏️</button>` : ''}
-        ${esSA ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
+      <td style="text-align:center">
+        <button class="btn btn-sm" onclick="abrirMenuAcc(event,${r.id})"
+                style="background:#1B3A1F;color:#fff;font-size:1rem;padding:4px 11px;line-height:1"
+                title="Ver acciones">⋮</button>
       </td></tr>`;
   }).join('');
   document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
@@ -2605,57 +2596,70 @@ async function guardarNota(id) {
 function cerrarModal() { document.getElementById('modalBg').classList.add('hidden'); }
 function cerrarModalLlamada() { document.getElementById('modalLlamadaBg').classList.add('hidden'); }
 
-// ── Menú flotante de acciones ──────────────────────────────────
+// ── Menú flotante de acciones (iconos en cuadrícula) ───────────
 function abrirMenuAcc(ev, id) {
   ev.stopPropagation();
-  const r = getLocal().find(x => String(x.id) === String(id));
+  const r   = getLocal().find(x => String(x.id) === String(id));
   if (!r) return;
   const esSA = getSess()?.role === 'superadmin';
-  const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || 'Paciente';
-  const tieneCaptura = !!(r.capturaLlamadaUrl || (r.llamadasLog && r.llamadasLog.some(c => c.capturaUrl)));
-  const tieneCert   = !!r.certificadoUrl;
+  const nom  = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || 'Paciente';
 
-  const items = [
-    { icon: '👁️', label: 'Ver detalle completo', color: '#1565C0',  fn: `verDetalle(${id})` },
-    { icon: '🪪',  label: 'Ver carnet',            color: '#27AE60', fn: `verCarnet(${id})` },
-    { icon: '📞',  label: 'Llamadas / Controles',  color: '#075E54', fn: `abrirModalLlamada(${id})` },
+  const capturaUrl = r.llamadasLog
+    ? (r.llamadasLog.filter(c => c.capturaUrl).slice(-1)[0]?.capturaUrl || '')
+    : (r.capturaLlamadaUrl || '');
+  const tieneCaptura = !!capturaUrl;
+  const tieneCert    = !!r.certificadoUrl;
+
+  // Cada botón: {bg, icon, title, fn, disabled, isLink, href}
+  const btns = [
+    { bg:'#1565C0', icon:'Ver',  title:'Ver detalle completo',     fn:`verDetalle(${id})` },
+    { bg:'#27AE60', icon:'🪪',   title:'Ver carnet',               fn:`verCarnet(${id})` },
+    { bg:'#075E54', icon:'📞',   title:'Llamadas y controles',     fn:`abrirModalLlamada(${id})` },
     tieneCaptura
-      ? { icon: '📸', label: 'Ver última captura', color: '#00897B',
-          fn: `window.open('${(r.llamadasLog ? r.llamadasLog.filter(c=>c.capturaUrl).slice(-1)[0]?.capturaUrl : r.capturaLlamadaUrl)||''}','_blank')` }
-      : { icon: '📸', label: 'Sin captura aún',    color: '#bbb',    disabled: true },
+      ? { bg:'#00897B', icon:'📸', title:'Ver captura de seguimiento', isLink:true, href: capturaUrl }
+      : { bg:'#ccc',    icon:'📸', title:'Sin captura',            disabled:true },
     tieneCert
-      ? { icon: '📄', label: 'Ver certificado',    color: '#E8A000', fn: `window.open('${r.certificadoUrl}','_blank')` }
-      : { icon: '📄', label: 'Sin certificado',    color: '#bbb',    disabled: true },
-    { icon: '📋',  label: 'Generar informe PDF',   color: '#8B0000', fn: `generarInformePDF(${id})` },
+      ? { bg:'#E8A000', icon:'📄', title:'Ver certificado',        isLink:true, href: r.certificadoUrl }
+      : { bg:'#ccc',    icon:'📄', title:'Sin certificado',        disabled:true },
+    { bg:'#8B0000', icon:'📋',   title:'Generar informe PDF',      fn:`generarInformePDF(${id})` },
     ...(esSA ? [
-      { sep: true },
-      { icon: '✏️',  label: 'Editar registro',     color: '#1565C0', fn: `cargarParaCompletar(${id})` },
-      { icon: '🗑️',  label: 'Eliminar registro',   color: '#E74C3C', fn: `eliminar(${id})` },
+      { bg:'#1565C0', icon:'✏️', title:'Editar todos los datos',   fn:`cargarParaCompletar(${id})` },
+      { bg:'#E74C3C', icon:'✕',  title:'Eliminar registro',        fn:`eliminar(${id})` },
     ] : []),
   ];
 
   const menu = document.getElementById('menuAcc');
   menu.innerHTML = `
-    <div style="padding:10px 16px 7px;border-bottom:1px solid #eee;font-size:0.78rem;color:#444;font-weight:700;
-                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px" title="${nom}">
-      ${nom}
-    </div>
-    ${items.map(it => it.sep
-      ? '<div class="menu-acc-sep"></div>'
-      : `<button class="menu-acc-item" style="color:${it.color};${it.disabled?'opacity:.4;cursor:default':''}"
-                 onclick="${it.disabled ? '' : it.fn + ';cerrarMenuAcc()'}">
-           <span style="font-size:1.05rem;width:20px;text-align:center">${it.icon}</span>${it.label}
-         </button>`
-    ).join('')}
-  `;
+    <div style="padding:9px 13px 7px;border-bottom:1px solid #eee;font-size:0.79rem;color:#333;
+                font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px"
+         title="${nom}">${nom}</div>
+    <div style="padding:10px 12px;display:flex;flex-wrap:wrap;gap:7px;max-width:260px">
+      ${btns.map(b => b.isLink
+        ? `<a href="${b.href}" target="_blank" onclick="cerrarMenuAcc()"
+              title="${b.title}"
+              style="display:flex;align-items:center;justify-content:center;
+                     width:38px;height:38px;border-radius:8px;background:${b.bg};
+                     color:#fff;font-size:1.1rem;text-decoration:none;cursor:pointer;
+                     border:none;box-shadow:0 2px 6px rgba(0,0,0,.18)">${b.icon}</a>`
+        : `<button title="${b.title}"
+                   onclick="${b.disabled ? '' : b.fn + ';cerrarMenuAcc()'}"
+                   style="display:flex;align-items:center;justify-content:center;
+                          width:38px;height:38px;border-radius:8px;background:${b.bg};
+                          color:#fff;font-size:${b.icon.length > 2 ? '0.72rem' : '1.05rem'};
+                          font-weight:700;border:none;cursor:${b.disabled?'not-allowed':'pointer'};
+                          opacity:${b.disabled?'.4':'1'};box-shadow:${b.disabled?'none':'0 2px 6px rgba(0,0,0,.18)'}">
+             ${b.icon}
+           </button>`
+      ).join('')}
+    </div>`;
 
-  const rect = ev.currentTarget.getBoundingClientRect();
-  const menuW = 240;
+  const rect  = ev.currentTarget.getBoundingClientRect();
+  const menuW = 270;
   let left = rect.right - menuW;
   if (left < 8) left = 8;
   if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
   let top = rect.bottom + 5;
-  if (top + 320 > window.innerHeight) top = rect.top - 320;
+  if (top + 180 > window.innerHeight) top = rect.top - 180;
 
   menu.style.left = left + 'px';
   menu.style.top  = top  + 'px';
