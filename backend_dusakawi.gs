@@ -12,10 +12,12 @@
 //  5. Copiar la URL del Web App → configurarla en Admin > Configuración del Servidor
 // ================================================================
 
-const FILE_NAME       = 'dusakawi_registros_discapacidad.json';
-const USERS_FILE_NAME = 'dusakawi_usuarios.json';
-const FOLDER_ID       = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
-const MAX_BACKUPS     = 10;   // Máximo de copias de respaldo por archivo
+const FILE_NAME            = 'dusakawi_registros_discapacidad.json';
+const USERS_FILE_NAME      = 'dusakawi_usuarios.json';
+const TOMBSTONES_FILE_NAME = 'dusakawi_tombstones.json';
+const FOLDER_ID            = '19f6yhpAN2qu6Jns68gsUOo1_QKoFzi17';
+const MAX_BACKUPS          = 10;
+const TOMBSTONE_DAYS       = 90;  // Conservar tombstones 90 días
 
 // ── API unificada vía GET ──────────────────────────────────────
 function doGet(e) {
@@ -33,6 +35,8 @@ function doGet(e) {
   try {
     if (action === 'load') {
       return buildResponse({ ok: true, data: getRecords() });
+    } else if (action === 'loadTombstones') {
+      return buildResponse({ ok: true, data: getTombstones() });
     } else if (action === 'save') {
       const record = JSON.parse(params.record);
       return buildResponse({ ok: true, data: saveRecordSafe(record) });
@@ -68,7 +72,7 @@ function doGet(e) {
   }
 }
 
-// ── doPost: upload de certificados ────────────────────────────
+// ── doPost: escritura de datos ───────────────────────────────
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -92,6 +96,10 @@ function doPost(e) {
       } else if (body.action === 'saveAll') {
         saveRecords(body.records);
         result = body.records.length;
+      } else if (body.action === 'saveUser') {
+        result = saveUserSafe(body.user);
+      } else if (body.action === 'deleteUser') {
+        result = deleteUserSafe(body.id);
       } else {
         throw new Error('Acción desconocida: ' + body.action);
       }
@@ -211,7 +219,40 @@ function saveRecordSafe(record) {
 function deleteRecordSafe(id) {
   const records = getRecords().filter(r => String(r.id) !== String(id));
   saveRecords(records);
+  addTombstone(String(id));
   return records.length;
+}
+
+// ── Tombstones compartidos en Drive ──────────────────────────────
+function getTombstones() {
+  try {
+    const folder = getFolder();
+    const iter   = folder.getFilesByName(TOMBSTONES_FILE_NAME);
+    if (iter.hasNext()) {
+      const txt = iter.next().getBlob().getDataAsString('UTF-8');
+      return txt ? JSON.parse(txt) : [];
+    }
+  } catch(e) { Logger.log('getTombstones error: ' + e.message); }
+  return [];
+}
+
+function saveTombstones(list) {
+  const folder  = getFolder();
+  const content = JSON.stringify(list);
+  const iter    = folder.getFilesByName(TOMBSTONES_FILE_NAME);
+  if (iter.hasNext()) { iter.next().setContent(content); }
+  else { folder.createFile(TOMBSTONES_FILE_NAME, content, MimeType.PLAIN_TEXT); }
+}
+
+function addTombstone(id) {
+  try {
+    const list    = getTombstones();
+    if (list.some(t => t.id === id)) return;
+    list.push({ id, deletedAt: new Date().toISOString() });
+    // Limpiar tombstones > TOMBSTONE_DAYS días
+    const cutoff  = new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString();
+    saveTombstones(list.filter(t => !t.deletedAt || t.deletedAt > cutoff));
+  } catch(e) { Logger.log('addTombstone error: ' + e.message); }
 }
 
 // ── Acceso a carpetas de Drive ────────────────────────────────

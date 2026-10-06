@@ -142,6 +142,19 @@ tr:hover td{background:#fafafa}
 .pending-dot{display:inline-block;background:#E8A000;color:#fff;border-radius:50%;
   width:20px;height:20px;font-size:0.65rem;font-weight:800;line-height:20px;
   text-align:center;margin-left:4px;vertical-align:middle}
+/* Menú flotante de acciones */
+.menu-acc{position:fixed;z-index:1100;background:#fff;border-radius:12px;
+  box-shadow:0 8px 32px rgba(0,0,0,.25);min-width:230px;padding:6px 0;
+  border:1px solid #e0e0e0;animation:fadeInMenu .12s ease}
+@keyframes fadeInMenu{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.menu-acc-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 16px;
+  background:none;border:none;text-align:left;cursor:pointer;font-size:0.86rem;
+  transition:background .12s;border-radius:0}
+.menu-acc-item:hover{background:#f3f6f9}
+.menu-acc-sep{height:1px;background:#eee;margin:4px 0}
+/* Controles de llamada */
+.ctrl-card{background:#f8f9fa;border-radius:10px;padding:12px 14px;margin-bottom:10px;border:1.5px solid #dee2e6}
+.ctrl-card-hdr{font-size:0.78rem;font-weight:800;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
 @media(max-width:768px){
   .hdr-txt p{display:none}
   .nb{padding:5px 9px;font-size:0.75rem}
@@ -475,14 +488,14 @@ tr:hover td{background:#fafafa}
                  onchange="previsualizarCertificado(this)"
                  style="width:100%;padding:7px;border:1.5px dashed #1B6B2A;border-radius:6px;background:#f8fff8;cursor:pointer">
           <div id="prevCertificado" style="margin-top:8px"></div>
-          <!-- Campo para pegar URL manualmente (Drive o Supabase) -->
+          <!-- Campo para pegar URL manualmente (Drive) -->
           <div style="margin-top:8px">
             <label style="font-size:0.76rem;color:#888;font-weight:600">
               ↳ O pegue aquí el enlace del archivo ya subido a Drive
             </label>
             <div style="display:flex;gap:6px;margin-top:4px">
               <input type="text" id="certificadoUrl" name="certificadoUrl"
-                placeholder="https://drive.google.com/file/d/... o https://...supabase.co/..."
+                placeholder="https://drive.google.com/file/d/..."
                 style="font-size:0.78rem;border:1.5px solid #E8A000;border-radius:6px;
                        padding:7px 10px;background:#FFFDE7;flex:1">
               <button type="button" class="btn btn-sm"
@@ -602,6 +615,7 @@ tr:hover td{background:#fafafa}
 
   <!-- REGISTROS -->
   <div id="vRecs" class="main hidden">
+    <div id="alSync" style="display:none;padding:0 0 4px 0"></div>
     <div class="card"><div class="sh sh-dark">📋 Registros Almacenados</div><div class="sb">
       <div class="sb-bar">
         <input type="text" id="fBuscar" name="dusa_srch_x7q" placeholder="Buscar por nombre, ID, municipio, discapacidad..." oninput="filtrar()" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
@@ -615,6 +629,8 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(null)">📋 Informe PDF</button>
         <button id="btnMasCols" class="btn btn-sm" style="background:#6c757d;color:#fff" onclick="toggleColumnas()">⊞ Más columnas</button>
         <button class="btn btn-g btn-sm" onclick="sincronizar()">🔄 Sincronizar</button>
+        <button class="btn btn-sm" style="background:#6c757d;color:#fff" onclick="diagnosticoSync()" title="Ver diagnóstico detallado de sincronización">🔍 Diagnóstico</button>
+        <button class="btn btn-sm" style="background:#7B1FA2;color:#fff" onclick="purgarRegistrosPrueba()" title="Eliminar de Drive + tombstone todos los registros de prueba/test">🧹 Purgar pruebas</button>
       </div>
       <!-- Zona de peligro: separada para evitar clics accidentales -->
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -777,6 +793,10 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<!-- MENÚ FLOTANTE DE ACCIONES -->
+<div id="menuAccBg" onclick="cerrarMenuAcc()" style="display:none;position:fixed;inset:0;z-index:1099"></div>
+<div id="menuAcc" class="menu-acc" style="display:none"></div>
+
 <!-- MODAL LLAMADA / WHATSAPP -->
 <div id="modalLlamadaBg" class="modal-bg hidden" onclick="if(event.target===this)cerrarModalLlamada()">
   <div class="modal-box" style="max-width:460px">
@@ -837,124 +857,146 @@ function instalarPWA() {
   });
 }
 
-// ── Supabase — backend primario ────────────────────────────────
-const SUPA_URL = 'https://gybykdfcozxvppjusgrt.supabase.co';
-const SUPA_KEY = 'sb_publishable_ddqijTSYl2_8Ye2QMv3r_g_3Ie6VblP';
-
-const supa = {
-  _h() {
-    return {
-      'apikey': SUPA_KEY,
-      'Authorization': 'Bearer ' + SUPA_KEY,
-      'Content-Type': 'application/json'
-    };
-  },
-  async loadRecords() {
-    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?select=registro&order=id.asc&limit=10000', {
-      headers: { ...this._h(), 'Range-Unit': 'items', 'Range': '0-9999' }
-    });
-    if (!r.ok) throw new Error('Supabase ' + r.status);
-    const rows = await r.json();
-    // Deduplicar por registro.id (por si hay filas repetidas en la DB)
-    const seen = new Set();
-    return rows.map(x => x.registro).filter(rec => {
-      const key = String(rec?.id ?? '');
-      if (!key || seen.has(key)) return false;
-      seen.add(key); return true;
-    });
-  },
-  async saveRecord(rec) {
-    // on_conflict=id → upsert explícito usando la columna id como clave de conflicto
-    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?on_conflict=id', {
-      method: 'POST',
-      headers: { ...this._h(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ id: Number(rec.id), registro: rec })
-    });
-    if (!r.ok) throw new Error('Supabase save ' + r.status);
-  },
-  async deleteRecord(id) {
-    const r = await fetch(SUPA_URL + '/rest/v1/registros_discapacidad?id=eq.' + id, {
-      method: 'DELETE',
-      headers: { ...this._h(), 'Prefer': 'return=minimal' }
-    });
-    if (!r.ok) {
-      let msg = 'HTTP ' + r.status;
-      try { const j = await r.json(); msg += ': ' + (j.message || j.hint || JSON.stringify(j)); } catch(_){}
-      throw new Error('Supabase DELETE ' + msg);
-    }
-  },
-  async loadUsers() {
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios?select=*&order=id.asc', { headers: this._h() });
-    if (!r.ok) throw new Error('Supabase ' + r.status);
-    // Mapear snake_case de DB → camelCase del app
-    return (await r.json()).map(u => ({
-      id: u.id, name: u.name, cargo: u.cargo,
-      username: u.username, password: u.password,
-      perfil: u.perfil || (u.superadmin ? 'superadministrador' : 'usuario'),
-      superadmin: u.superadmin,
-      createdAt: u.created_at, updatedAt: u.updated_at
-    }));
-  },
-  async saveUser(user) {
-    const row = {
-      id:         user.id,
-      name:       user.name       || '',
-      cargo:      user.cargo      || '',
-      username:   user.username   || '',
-      password:   user.password   || '',
-      perfil:     getPerfil(user),
-      superadmin: esSuperAdmin(user),
-      created_at: user.createdAt  || new Date().toISOString(),
-      updated_at: user.updatedAt  || new Date().toISOString()
-    };
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios', {
-      method: 'POST',
-      headers: { ...this._h(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(row)
-    });
-    if (!r.ok) throw new Error('Supabase ' + r.status);
-  },
-  // Busca automáticamente el certificado en Supabase Storage por recordId
-  async findCertificado(recordId) {
-    try {
-      const r = await fetch(SUPA_URL + '/storage/v1/object/list/certificados', {
-        method: 'POST',
-        headers: this._h(),
-        body: JSON.stringify({ prefix: 'cert_' + recordId + '_', limit: 1, sortBy: { column: 'created_at', order: 'desc' } })
-      });
-      if (!r.ok) return null;
-      const files = await r.json();
-      if (files && files.length > 0 && files[0].name) {
-        return SUPA_URL + '/storage/v1/object/public/certificados/' + files[0].name;
-      }
-    } catch(_) {}
-    return null;
-  },
-  async deleteUser(id) {
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios?id=eq.' + id, { method: 'DELETE', headers: this._h() });
-    if (!r.ok) throw new Error('Supabase ' + r.status);
-  }
-};
-
-// ── GAS — SOLO para archivos/certificados (Drive) ─────────────
+// ── Google Drive / GAS — backend primario ─────────────────────
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzY-HYJEP2BAqhmnN_ROzfg_CSN5K7oLgz76PDY_FMdwrGWfxSBvQWP1OXSACu1Ni-uvg/exec';
 
 const api = {
   _gsOk() { return typeof google !== 'undefined' && google && google.script; },
   _url()  { return localStorage.getItem('dusa_gas_url') || GAS_URL_DEFAULT; },
 
-  // ── Registros: SOLO Supabase ─────────────────────────────────
-  async load()         { return supa.loadRecords(); },
-  async save(record)   { return supa.saveRecord(record); },
-  async remove(id)     { return supa.deleteRecord(id); },
-  async saveAll(recs)  {
-    for (const r of recs) await supa.saveRecord(r).catch(() => {});
+  // GET para lecturas (no modifica datos)
+  async _get(params) {
+    const url = this._url();
+    if (!url) throw new Error('Sin URL del servidor. Configure la URL en Admin → Configuración del Servidor.');
+    const qs = Object.entries(params)
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))
+      .join('&');
+    const r = await fetch(url + '?' + qs);
+    if (!r.ok) throw new Error('Drive HTTP ' + r.status);
+    const json = await r.json();
+    if (!json.ok) throw new Error(json.error || 'Error en servidor Drive');
+    return json.data;
   },
 
-  // ── Usuarios: SOLO Supabase ──────────────────────────────────
-  async loadUsers()    { return supa.loadUsers(); },
-  async saveUser(u)    { return supa.saveUser(u); },
-  async removeUser(id) { return supa.deleteUser(id); },
+  // POST para escrituras (Content-Type: text/plain evita CORS preflight en GAS)
+  async _post(body) {
+    const url = this._url();
+    if (!url) throw new Error('Sin URL del servidor. Configure la URL en Admin → Configuración del Servidor.');
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('Drive HTTP ' + r.status);
+    const json = await r.json();
+    if (!json.ok) throw new Error(json.error || 'Error en servidor Drive');
+    return json.data;
+  },
+
+  // ── Registros: Google Drive ───────────────────────────────────
+  async load() {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(d => res(JSON.parse(d)))
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .loadRecords();
+      });
+    }
+    return this._get({ action: 'load' });
+  },
+  async save(record) {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(res)
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .saveRecord(JSON.stringify(record));
+      });
+    }
+    return this._post({ action: 'save', record });
+  },
+  async remove(id) {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(res)
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .deleteRecord(String(id));
+      });
+    }
+    return this._post({ action: 'delete', id: String(id) });
+  },
+  async saveAll(recs) {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(res)
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .saveAllRecords(JSON.stringify(recs));
+      });
+    }
+    return this._post({ action: 'saveAll', records: recs });
+  },
+
+  // ── Usuarios: Google Drive ────────────────────────────────────
+  async loadUsers() {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(d => res(JSON.parse(d)))
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .loadUsersGAS();
+      });
+    }
+    return this._get({ action: 'loadUsers' });
+  },
+  async saveUser(u) {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(res)
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .saveUserGAS(JSON.stringify(u));
+      });
+    }
+    return this._post({ action: 'saveUser', user: u });
+  },
+  async removeUser(id) {
+    if (this._gsOk()) {
+      return new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(res)
+          .withFailureHandler(e => rej(new Error(e.message || String(e))))
+          .deleteUserGAS(String(id));
+      });
+    }
+    return this._post({ action: 'deleteUser', id: String(id) });
+  },
+
+  // ── Tombstones compartidos en Drive ─────────────────────────
+  async loadTombstones() {
+    // GAS context no tiene función directa; usamos GET (sin lock, es lectura simple)
+    if (this._gsOk()) {
+      return this._get({ action: 'loadTombstones' }).catch(() => []);
+    }
+    return this._get({ action: 'loadTombstones' }).catch(() => []);
+  },
+
+  // ── Buscar certificado en Drive ───────────────────────────────
+  async buscarCertificado(recordId) {
+    try {
+      if (this._gsOk()) {
+        return new Promise(res => {
+          google.script.run
+            .withSuccessHandler(url => res(url || null))
+            .withFailureHandler(() => res(null))
+            .buscarCertificadoGAS(String(recordId));
+        });
+      }
+      return await this._get({ action: 'buscarCertificado', recordId: String(recordId) });
+    } catch(_) { return null; }
+  },
   // Comprime imágenes antes de subir (fotos → JPEG 80%, max 1400px)
   // PDFs y otros archivos se devuelven sin cambios
   _comprimirSiImagen(file) {
@@ -986,51 +1028,23 @@ const api = {
     // 1. Comprimir si es imagen (max 1400px, JPEG 80%)
     file = await this._comprimirSiImagen(file);
 
-    // 2. ── Supabase Storage: upload directo (2-3 segundos) ─────
-    try {
-      if (onProgress) onProgress(2, 10);
-      const safeName = 'cert_' + recordId + '_' + Date.now() + '_' +
-                       file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const r = await fetch(
-        SUPA_URL + '/storage/v1/object/certificados/' + safeName,
-        {
-          method: 'POST',
-          headers: {
-            'apikey':        SUPA_KEY,
-            'Authorization': 'Bearer ' + SUPA_KEY,
-            'Content-Type':  file.type || 'application/octet-stream',
-            'x-upsert':      'true'
-          },
-          body: file
-        }
-      );
-      if (r.ok) {
-        if (onProgress) onProgress(10, 10);
-        return SUPA_URL + '/storage/v1/object/public/certificados/' + safeName;
-      }
-      const errTxt = await r.text().catch(() => r.status);
-      console.warn('Supabase Storage (' + r.status + '):', errTxt);
-    } catch (supaErr) {
-      console.warn('Supabase Storage error:', supaErr.message);
-    }
-
-    // 3. ── Fallback GAS / Drive (si Supabase falla) ────────────
+    // 2. ── Drive via GAS ──────────────────────────────────────
     return new Promise((res, rej) => {
       const reader = new FileReader();
       reader.onload = async ev => {
         try {
           const b64 = ev.target.result.split(',')[1];
-          // GAS context: llamada directa sin polling
+          // Contexto GAS: llamada directa sin polling
           if (this._gsOk()) {
             if (onProgress) onProgress(1, 10);
             google.script.run
               .withSuccessHandler(url => { if (onProgress) onProgress(10, 10); res(url); })
-              .withFailureHandler(rej)
+              .withFailureHandler(e => rej(new Error(e.message || String(e))))
               .uploadCertificadoGAS(String(recordId), file.name, b64, file.type);
             return;
           }
-          // GitHub Pages / Web: POST + polling
-          if (!this._url()) { rej(new Error('Sin URL de servidor')); return; }
+          // Web externa: POST + polling de resultado
+          if (!this._url()) { rej(new Error('Sin URL de servidor configurada')); return; }
           const uploadId = 'up' + Date.now();
           await fetch(this._url(), {
             method: 'POST', mode: 'no-cors',
@@ -1079,12 +1093,12 @@ async function autoCompletarCertificados() {
 
   let actualizados = 0;
   for (const r of sinUrl) {
-    // 1. Buscar en Supabase Storage
-    const url = await supa.findCertificado(String(r.id));
+    // 1. Buscar en Drive via GAS
+    const url = await api.buscarCertificado(String(r.id));
     if (url) {
       r.certificadoUrl = url;
       actualizados++;
-      // Guardar en local y en Supabase
+      // Guardar en local y en Drive
       const idx = local.findIndex(x => String(x.id) === String(r.id));
       if (idx >= 0) local[idx] = r;
       api.save(r).catch(() => {});
@@ -1214,6 +1228,112 @@ function setSyncStatus(estado, msg) {
 // ── Sincronización bidireccional ordenada ─────────────────────
 let _syncing = false;
 
+async function diagnosticoSync() {
+  const alSync = document.getElementById('alSync');
+  if (alSync) { alSync.innerHTML = '<div style="padding:8px;color:#555">⏳ Consultando Drive...</div>'; alSync.style.display = ''; }
+  try {
+    const supaRecs = await api.load();
+    const local    = getLocal();
+    const deleted  = getDeleted();
+    const queue    = getQueue();
+    const supaIds  = new Set(supaRecs.map(r => String(r.id)));
+    const localIds = new Set(local.map(r => String(r.id)));
+    const tombIds  = Object.keys(deleted);
+    const soloLocal = local.filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)));
+    const soloSupaFiltrados = supaRecs.filter(r => wasDeleted(String(r.id)));
+
+    const html = `<div style="background:#EEF2FF;border:1.5px solid #4F46E5;border-radius:8px;padding:12px 16px;margin-bottom:8px;font-size:0.82rem">
+      <strong style="color:#3730A3">🔍 Diagnóstico de Sincronización</strong>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px">
+        <tr><td style="padding:3px 8px 3px 0;color:#555">📡 Registros en Drive (bruto)</td><td style="font-weight:700;color:#1B6B2A">${supaRecs.length}</td></tr>
+        <tr><td style="padding:3px 8px 3px 0;color:#555">💾 Registros en localStorage</td><td style="font-weight:700">${local.length}</td></tr>
+        <tr><td style="padding:3px 8px 3px 0;color:#555">⬆ Solo en local (pendientes subida)</td><td style="font-weight:700;color:${soloLocal.length > 0 ? '#E74C3C' : '#27AE60'}">${soloLocal.length}</td></tr>
+        <tr><td style="padding:3px 8px 3px 0;color:#555">🪦 Tombstones (eliminados localmente)</td><td style="font-weight:700;color:${tombIds.length > 0 ? '#E8A000' : '#555'}">${tombIds.length}</td></tr>
+        <tr><td style="padding:3px 8px 3px 0;color:#555">⚠ En Drive pero tombstoneados aquí</td><td style="font-weight:700;color:${soloSupaFiltrados.length > 0 ? '#E74C3C' : '#27AE60'}">${soloSupaFiltrados.length}</td></tr>
+        <tr><td style="padding:3px 8px 3px 0;color:#555">📤 Cola offline pendiente</td><td style="font-weight:700;color:${queue.length > 0 ? '#E8A000' : '#555'}">${queue.length}</td></tr>
+      </table>
+      ${soloLocal.length > 0 ? `<div style="margin-top:8px;padding:6px;background:#FEE2E2;border-radius:4px;color:#991B1B">
+        ⚠ <strong>${soloLocal.length} registro(s)</strong> están en este dispositivo pero NO en Drive.<br>
+        IDs: ${soloLocal.slice(0,5).map(r=>r.id).join(', ')}${soloLocal.length>5?'...':''}
+        <br><button class="btn btn-sm" style="margin-top:4px;background:#DC2626;color:#fff" onclick="sincronizar()">🔄 Sincronizar ahora</button>
+      </div>` : ''}
+      ${soloSupaFiltrados.length > 0 ? `<div style="margin-top:8px;padding:6px;background:#FEF3C7;border-radius:4px;color:#92400E">
+        ⚠ <strong>${soloSupaFiltrados.length} registro(s)</strong> existen en Drive pero este dispositivo los tiene como eliminados (tombstone).<br>
+        Esto causa que este dispositivo muestre MENOS registros que los demás.<br>
+        IDs: ${soloSupaFiltrados.slice(0,5).map(r=>r.id).join(', ')}${soloSupaFiltrados.length>5?'...':''}
+        <br><button class="btn btn-sm" style="margin-top:4px;background:#D97706;color:#fff" onclick="limpiarTombstones()">🗑 Limpiar tombstones de estos registros</button>
+      </div>` : ''}
+      <div style="margin-top:8px;text-align:right">
+        <button class="btn btn-sm btn-ol" onclick="document.getElementById('alSync').innerHTML='';document.getElementById('alSync').style.display='none'">✕ Cerrar</button>
+      </div>
+    </div>`;
+    if (alSync) { alSync.innerHTML = html; alSync.style.display = ''; }
+  } catch(e) {
+    if (alSync) { alSync.innerHTML = `<div style="color:#E74C3C;padding:8px">❌ Error al consultar Drive: ${e.message}</div>`; }
+  }
+}
+
+async function limpiarTombstones() {
+  if (!confirm('¿Limpiar los tombstones de registros que aún existen en Drive?\n\nEstos registros volverán a aparecer en este dispositivo.')) return;
+  const supaRecs = await api.load();
+  const supaIds  = new Set(supaRecs.map(r => String(r.id)));
+  const deleted  = getDeleted();
+  let limpiados = 0;
+  for (const id of Object.keys(deleted)) {
+    if (supaIds.has(id)) { delete deleted[id]; limpiados++; }
+  }
+  setDeleted(deleted);
+  alert(`✅ Se limpiaron ${limpiados} tombstone(s). Sincronizando...`);
+  sincronizar();
+}
+
+async function purgarRegistrosPrueba() {
+  // Detecta registros con nombre o ID que parezcan de prueba
+  const esPrueba = r => {
+    const nom = [r.primerNombre, r.segundoNombre, r.primerApellido, r.segundoApellido]
+      .map(v => (v || '').toUpperCase()).join(' ');
+    const id  = String(r.identificacion || '');
+    return /\bPRUEB[AO]\b/.test(nom) || /^(TEST|DEMO|PRUEBA|1213231|1007398620)$/.test(id.trim());
+  };
+
+  const local = getLocal();
+  const candidatos = local.filter(esPrueba);
+
+  if (!candidatos.length) {
+    alert('✅ No se encontraron registros de prueba en este dispositivo.');
+    return;
+  }
+
+  const lista = candidatos.slice(0, 20).map(r =>
+    `• [${r.identificacion}] ${[r.primerNombre, r.primerApellido].filter(Boolean).join(' ')}`
+  ).join('\n') + (candidatos.length > 20 ? `\n...y ${candidatos.length - 20} más` : '');
+
+  if (!confirm(`Se encontraron ${candidatos.length} registro(s) de prueba:\n\n${lista}\n\n¿Eliminarlos de Drive y de todos los dispositivos de forma permanente?`)) return;
+
+  setSyncStatus('carg', `Purgando ${candidatos.length} registro(s)...`);
+  let ok = 0, fail = 0;
+  for (const r of candidatos) {
+    try {
+      await api.remove(r.id);
+      markDeleted(r.id);
+      ok++;
+    } catch(e) {
+      console.warn('Error purgando', r.id, e);
+      markDeleted(r.id); // tombstone local aunque falle el Drive
+      fail++;
+    }
+  }
+  // Quitar del localStorage
+  const nuevos = getLocal().filter(r => !esPrueba(r));
+  setLocal(nuevos);
+  renderRecs(nuevos);
+  const msg = fail > 0
+    ? `✅ ${ok} purgado(s) de Drive. ⚠ ${fail} solo eliminado(s) localmente (reintentará en próxima sync).`
+    : `✅ ${ok} registro(s) de prueba eliminado(s) permanentemente.`;
+  alert(msg);
+  setSyncStatus('ok', `✅ Drive: ${nuevos.length} registro(s)`);
+}
+
 async function sincronizar() {
   if (_syncing) return;
   if (!navigator.onLine) {
@@ -1225,34 +1345,62 @@ async function sincronizar() {
   try {
     // 1. Subir cola offline (registros guardados sin internet)
     const queue = getQueue();
+    const queueFailed = [];
     for (let i = 0; i < queue.length; i++) {
       setSyncStatus('carg', `Subiendo offline ${i + 1}/${queue.length}...`);
-      await supa.saveRecord(queue[i]);
-      const nq = getQueue(); nq.shift(); setQueue(nq);
+      try {
+        await api.save(queue[i]);
+      } catch(eQ) {
+        console.warn('⚠ No se pudo subir registro offline', queue[i].id, eQ);
+        queueFailed.push(queue[i]);
+      }
     }
+    // Solo quedan en cola los que fallaron
+    setQueue(queueFailed);
 
-    // 2. Descargar TODOS los registros desde Supabase
-    setSyncStatus('carg', 'Descargando desde Supabase...');
-    let supaRecs = await supa.loadRecords();
+    // 2. Descargar registros y tombstones compartidos desde Drive en paralelo
+    setSyncStatus('carg', 'Descargando desde Drive...');
+    const [_recs, _driveTombstones] = await Promise.all([
+      api.load(),
+      api.loadTombstones(),
+    ]);
+    let supaRecs = _recs;
 
-    // 3. Detectar registros locales que Supabase no tiene → subirlos
+    // Mergear tombstones de Drive con tombstones locales
+    const localDel = getDeleted();
+    let cambiosTombstone = 0;
+    for (const t of _driveTombstones) {
+      if (!localDel[t.id]) { localDel[t.id] = t.deletedAt || new Date().toISOString(); cambiosTombstone++; }
+    }
+    if (cambiosTombstone > 0) setDeleted(localDel);
+    const driveDeletedIds = new Set(_driveTombstones.map(t => t.id));
+
+    // 3. Detectar registros locales que Drive no tiene → subirlos
+    // CRÍTICO: excluir los que ya están en tombstones de Drive (evita resurrección entre dispositivos)
     const supaIds = new Set(supaRecs.map(r => String(r.id)));
     const soloLocal = getLocal()
-      .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)))
+      .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
+    // Subida tolerante a fallos: un error en un registro no detiene toda la sync
+    const erroresSubida = [];
     for (let i = 0; i < soloLocal.length; i++) {
-      setSyncStatus('carg', `Subiendo a Supabase ${i + 1}/${soloLocal.length}...`);
-      await supa.saveRecord(soloLocal[i]);
+      setSyncStatus('carg', `Subiendo a Drive ${i + 1}/${soloLocal.length}...`);
+      try {
+        await api.save(soloLocal[i]);
+      } catch(eUp) {
+        erroresSubida.push({ id: soloLocal[i].id, err: eUp.message || String(eUp) });
+        console.warn('⚠ No se pudo subir registro', soloLocal[i].id, eUp);
+      }
     }
 
-    // 4. Estado final desde Supabase (fuente única de verdad)
-    if (soloLocal.length > 0) supaRecs = await supa.loadRecords();
+    // 4. Estado final desde Drive (fuente única de verdad)
+    if (soloLocal.length > 0) supaRecs = await api.load();
 
-    // Nunca resucitar registros eliminados
-    supaRecs = supaRecs.filter(r => !wasDeleted(String(r.id)));
+    // Nunca resucitar registros eliminados (local o Drive tombstone)
+    supaRecs = supaRecs.filter(r => !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)));
 
-    // 5. Merge: Supabase + pendientes locales que aún no confirmó Supabase
+    // 5. Merge: Drive + pendientes locales que aún no confirmó Drive
     const supaIdsFinal = new Set(supaRecs.map(r => String(r.id)));
     const quedanLocal  = getLocal().filter(
       r => !supaIdsFinal.has(String(r.id)) && !wasDeleted(String(r.id))
@@ -1267,11 +1415,32 @@ async function sincronizar() {
       poblarFiltroFuncionario();
     }
 
-    const pendMsg = quedanLocal.length > 0 ? ` (${quedanLocal.length} pendiente(s))` : '';
-    setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
-      `✅ Supabase: ${supaRecs.length} registro(s)${pendMsg}`);
+    // Mostrar alerta si hay registros que no pudieron subirse
+    if (erroresSubida.length > 0) {
+      const msgErr = `⚠️ ${erroresSubida.length} registro(s) NO se pudieron subir a Drive:\n` +
+        erroresSubida.map(e => `• ID ${e.id}: ${e.err}`).join('\n') +
+        '\n\nContacte al administrador o intente sincronizar de nuevo.';
+      console.error(msgErr);
+      setSyncStatus('err', `⚠️ Drive: ${supaRecs.length} sync · ${erroresSubida.length} fallo(s) de subida`);
+      // Mostrar alerta persistente en pantalla
+      const alSync = document.getElementById('alSync');
+      if (alSync) {
+        alSync.innerHTML = `<div style="background:#FFF3CD;border:1.5px solid #E8A000;border-radius:8px;padding:10px 14px;margin:8px 0;font-size:0.82rem">
+          ⚠️ <strong>${erroresSubida.length} registro(s) no se pudieron subir a Drive.</strong>
+          Error: ${erroresSubida[0].err}
+          <br><button class="btn btn-sm" style="margin-top:6px;background:#E8A000;color:#fff" onclick="sincronizar()">🔄 Reintentar</button>
+        </div>`;
+        alSync.style.display = '';
+      }
+    } else {
+      const alSync = document.getElementById('alSync');
+      if (alSync && !alSync.dataset.keepDiag) { alSync.innerHTML = ''; alSync.style.display = 'none'; }
+      const pendMsg = quedanLocal.length > 0 ? ` (${quedanLocal.length} pendiente(s) sin subir)` : '';
+      setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
+        `✅ Drive: ${supaRecs.length} registro(s)${pendMsg}`);
+    }
 
-    // Refrescar perfil del usuario actual desde Supabase (detecta cambios de rol)
+    // Refrescar perfil del usuario actual desde Drive (detecta cambios de rol)
     try {
       const supaUsers = await api.loadUsers();
       setUsers(supaUsers);
@@ -1296,7 +1465,7 @@ async function sincronizar() {
     autoCompletarCertificados().catch(() => {});
 
   } catch (err) {
-    setSyncStatus('err', '❌ Supabase: ' + (err.message || String(err)));
+    setSyncStatus('err', '❌ Drive: ' + (err.message || String(err)));
   } finally {
     _syncing = false;
   }
@@ -1310,7 +1479,7 @@ async function doLogin() {
 
   let user = null;
 
-  // Con conexión: Supabase SIEMPRE primero (garantiza permisos actualizados)
+  // Con conexión: Drive SIEMPRE primero (garantiza permisos actualizados)
   if (navigator.onLine) {
     alerta('alLogin', '⏳ Verificando credenciales...', 'inf');
     try {
@@ -1666,8 +1835,8 @@ function cargarParaCompletar(id) {
   if (r.certificadoDisc === 'Sí' && !r.certificadoUrl) {
     const urlInput = document.getElementById('certificadoUrl');
     const prev     = document.getElementById('prevCertificado');
-    if (prev) prev.innerHTML = '<div style="font-size:0.78rem;color:#888;padding:4px">🔍 Buscando certificado...</div>';
-    supa.findCertificado(String(r.id)).then(url => {
+    if (prev) prev.innerHTML = '<div style="font-size:0.78rem;color:#888;padding:4px">🔍 Buscando certificado en Drive...</div>';
+    api.buscarCertificado(String(r.id)).then(url => {
       if (url) {
         if (urlInput) urlInput.value = url;
         if (prev) prev.innerHTML = `<div style="background:#E8F5E9;border-radius:6px;padding:8px;font-size:0.82rem">
@@ -1781,7 +1950,7 @@ async function guardar(e) {
     setSyncStatus('carg', 'Sincronizando...');
     try {
       await api.save(rec);
-      // Eliminar posibles duplicados en Supabase con mismo documento pero diferente id
+      // Eliminar posibles duplicados en Drive con mismo documento pero diferente id
       setSyncStatus('ok', 'Actualizado en Drive ✓');
     } catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
 
@@ -1814,13 +1983,13 @@ async function guardar(e) {
       } catch (err) { alerta('alForm', '⚠ ' + (err.message || 'No se pudo subir el certificado.'), 'err'); }
     }
     // local ya fue guardado antes del upload — solo notificar
-    alerta('alForm', '✅ Guardado localmente. Sincronizando con Supabase...', 'ok');
+    alerta('alForm', '✅ Guardado localmente. Sincronizando con Drive...', 'ok');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (!navigator.onLine) {
       encolarRegistro(rec); setSyncStatus('off', 'Sin conexión — guardado local ✓');
     } else {
-      setSyncStatus('carg', 'Guardando en Supabase...');
-      try { await supa.saveRecord(rec); setSyncStatus('ok', `✅ Supabase: guardado`); }
+      setSyncStatus('carg', 'Guardando en Drive...');
+      try { await api.save(rec); setSyncStatus('ok', `✅ Drive: guardado`); }
       catch { encolarRegistro(rec); setSyncStatus('off', 'Pendiente de sincronización ✓'); }
     }
   }
@@ -1887,19 +2056,12 @@ function renderRecs(recs) {
       <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
       <td class="col-opc">${r.regimen||'-'}</td><td>${rehab}</td><td style="text-align:center">${trat}</td>
       <td class="col-opc">${fReg}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
-        <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
-        <button class="btn btn-sm" style="background:#075E54;color:#fff" onclick="abrirModalLlamada(${r.id})" title="Gestionar llamada y WhatsApp">📞</button>
-        ${r.capturaLlamadaUrl
-          ? `<a href="${r.capturaLlamadaUrl}" target="_blank" class="btn btn-sm" style="background:#00897B;color:#fff;text-decoration:none" title="Ver captura de llamada/seguimiento">📸</a>`
-          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.5" title="Sin captura de seguimiento">📸</span>`}
-        ${r.certificadoUrl
-          ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado cargado">📄</a>`
-          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado cargado">📄</span>`}
-        <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(${r.id})" title="Generar informe PDF de este paciente">📋</button>
-        ${esSA ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Abrir formulario para editar">✏️</button>` : ''}
-        ${esSA ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
+      <td style="white-space:nowrap;text-align:center">
+        <button class="btn btn-sm" onclick="abrirMenuAcc(event,${r.id})"
+                style="background:#1B3A1F;color:#fff;font-size:0.82rem;padding:5px 13px;letter-spacing:.3px"
+                title="Ver opciones de este registro">
+          ⋮ Acciones
+        </button>
       </td></tr>`;
   }).join('');
   document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
@@ -1954,11 +2116,11 @@ async function eliminarSeleccionados() {
     markDeleted(id);
     const local = getLocal().filter(r => String(r.id) !== String(id));
     setLocal(local);
-    try { await supa.deleteRecord(id); eliminados++; } catch(e) { console.warn('Error al eliminar', id, e); }
+    try { await api.remove(id); eliminados++; } catch(e) { console.warn('Error al eliminar', id, e); }
   }
   const restantes = getLocal();
   renderRecs(restantes); actualizarDash();
-  setSyncStatus('ok', `✅ ${eliminados} registro(s) eliminado(s). Supabase: ${restantes.length} registro(s)`);
+  setSyncStatus('ok', `✅ ${eliminados} registro(s) eliminado(s). Drive: ${restantes.length} registro(s)`);
 }
 
 // Normaliza nombre de funcionario: elimina año al final (Heidy2026 → Heidy)
@@ -2050,14 +2212,13 @@ async function eliminar(id) {
   markDeleted(id);  // tombstone: evita resurrección en otros dispositivos
   const nuevos = getLocal().filter(r => String(r.id) !== String(id));
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
-  setSyncStatus('carg', 'Eliminando en Supabase...');
+  setSyncStatus('carg', 'Eliminando en Drive...');
   try {
-    await supa.deleteRecord(id);
-    setSyncStatus('ok', `✅ Supabase: ${getLocal().length} registro(s)`);
+    await api.remove(id);
+    setSyncStatus('ok', `✅ Drive: ${getLocal().length} registro(s)`);
   } catch(e) {
     setSyncStatus('err', '❌ Error al eliminar: ' + e.message);
-    alert('❌ No se pudo eliminar en Supabase:\n\n' + e.message +
-      '\n\nSi el error es "permission denied" o "RLS", ejecute en Supabase SQL Editor:\nCREATE POLICY "allow_delete_anon" ON registros_discapacidad FOR DELETE USING (true);');
+    alert('❌ No se pudo eliminar en Drive:\n\n' + e.message);
     // Tombstone garantiza que aunque falle ahora, en la próxima sync no vuelve
   }
 }
@@ -2067,16 +2228,16 @@ async function borrarTodo() {
     alert('Solo el Super Administrador puede borrar todos los registros.');
     return;
   }
-  if (!confirm('¿Eliminar TODOS los registros de Supabase? Esta acción no se puede deshacer.')) return;
-  setSyncStatus('carg', 'Eliminando todos en Supabase...');
+  if (!confirm('¿Eliminar TODOS los registros de Drive? Esta acción no se puede deshacer.')) return;
+  setSyncStatus('carg', 'Eliminando todos en Drive...');
   try {
     const todos = getLocal();
     for (const r of todos) {
       markDeleted(r.id);
-      await supa.deleteRecord(r.id).catch(() => {});
+      await api.remove(r.id).catch(() => {});
     }
     setLocal([]); renderRecs([]); actualizarDash();
-    setSyncStatus('ok', '✅ Supabase: 0 registros');
+    setSyncStatus('ok', '✅ Drive: 0 registros');
   } catch(e) {
     setSyncStatus('err', 'Error al limpiar: ' + e.message);
   }
@@ -2399,6 +2560,69 @@ async function guardarNota(id) {
 function cerrarModal() { document.getElementById('modalBg').classList.add('hidden'); }
 function cerrarModalLlamada() { document.getElementById('modalLlamadaBg').classList.add('hidden'); }
 
+// ── Menú flotante de acciones ──────────────────────────────────
+function abrirMenuAcc(ev, id) {
+  ev.stopPropagation();
+  const r = getLocal().find(x => String(x.id) === String(id));
+  if (!r) return;
+  const esSA = getSess()?.role === 'superadmin';
+  const nom = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || 'Paciente';
+  const tieneCaptura = !!(r.capturaLlamadaUrl || (r.llamadasLog && r.llamadasLog.some(c => c.capturaUrl)));
+  const tieneCert   = !!r.certificadoUrl;
+
+  const items = [
+    { icon: '👁️', label: 'Ver detalle completo', color: '#1565C0',  fn: `verDetalle(${id})` },
+    { icon: '🪪',  label: 'Ver carnet',            color: '#27AE60', fn: `verCarnet(${id})` },
+    { icon: '📞',  label: 'Llamadas / Controles',  color: '#075E54', fn: `abrirModalLlamada(${id})` },
+    tieneCaptura
+      ? { icon: '📸', label: 'Ver última captura', color: '#00897B',
+          fn: `window.open('${(r.llamadasLog ? r.llamadasLog.filter(c=>c.capturaUrl).slice(-1)[0]?.capturaUrl : r.capturaLlamadaUrl)||''}','_blank')` }
+      : { icon: '📸', label: 'Sin captura aún',    color: '#bbb',    disabled: true },
+    tieneCert
+      ? { icon: '📄', label: 'Ver certificado',    color: '#E8A000', fn: `window.open('${r.certificadoUrl}','_blank')` }
+      : { icon: '📄', label: 'Sin certificado',    color: '#bbb',    disabled: true },
+    { icon: '📋',  label: 'Generar informe PDF',   color: '#8B0000', fn: `generarInformePDF(${id})` },
+    ...(esSA ? [
+      { sep: true },
+      { icon: '✏️',  label: 'Editar registro',     color: '#1565C0', fn: `cargarParaCompletar(${id})` },
+      { icon: '🗑️',  label: 'Eliminar registro',   color: '#E74C3C', fn: `eliminar(${id})` },
+    ] : []),
+  ];
+
+  const menu = document.getElementById('menuAcc');
+  menu.innerHTML = `
+    <div style="padding:10px 16px 7px;border-bottom:1px solid #eee;font-size:0.78rem;color:#444;font-weight:700;
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px" title="${nom}">
+      ${nom}
+    </div>
+    ${items.map(it => it.sep
+      ? '<div class="menu-acc-sep"></div>'
+      : `<button class="menu-acc-item" style="color:${it.color};${it.disabled?'opacity:.4;cursor:default':''}"
+                 onclick="${it.disabled ? '' : it.fn + ';cerrarMenuAcc()'}">
+           <span style="font-size:1.05rem;width:20px;text-align:center">${it.icon}</span>${it.label}
+         </button>`
+    ).join('')}
+  `;
+
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const menuW = 240;
+  let left = rect.right - menuW;
+  if (left < 8) left = 8;
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  let top = rect.bottom + 5;
+  if (top + 320 > window.innerHeight) top = rect.top - 320;
+
+  menu.style.left = left + 'px';
+  menu.style.top  = top  + 'px';
+  menu.style.display = 'block';
+  document.getElementById('menuAccBg').style.display = 'block';
+}
+
+function cerrarMenuAcc() {
+  document.getElementById('menuAcc').style.display = 'none';
+  document.getElementById('menuAccBg').style.display = 'none';
+}
+
 const _INDICATIVOS = [
   {c:'57',p:'🇨🇴 +57 Colombia'},{c:'58',p:'🇻🇪 +58 Venezuela'},
   {c:'1',p:'🇺🇸 +1 USA/CAN'},{c:'51',p:'🇵🇪 +51 Perú'},
@@ -2446,12 +2670,73 @@ async function guardarTelModal(id, cual) {
   local[idx][campo] = val;
   setLocal(local);
   try {
-    await supa.saveRecord(local[idx]);
+    await api.save(local[idx]);
     st.textContent = '✅ Guardado'; st.style.color='#1B6B2A';
     setTimeout(() => abrirModalLlamada(id), 600);
   } catch {
     st.textContent = '⚠ Guardado local'; st.style.color='#E8A000';
   }
+}
+
+function _renderControlesLlamada(r) {
+  // Migración: si tiene capturaLlamadaUrl legacy pero no llamadasLog, crear Control 1
+  let log = r.llamadasLog ? [...r.llamadasLog] : [];
+  if (log.length === 0 && r.capturaLlamadaUrl) {
+    log = [{ n: 1, fecha: '', notas: '', capturaUrl: r.capturaLlamadaUrl }];
+  }
+  const id = r.id;
+
+  const tarjetas = log.map(ctrl => {
+    const colores = ['#075E54','#1565C0','#6A1B9A','#8B0000','#27AE60','#E8A000'];
+    const col = colores[(ctrl.n - 1) % colores.length];
+    return `
+      <div class="ctrl-card" style="border-left:4px solid ${col}">
+        <div class="ctrl-card-hdr" style="color:${col}">
+          <span>📞 Control ${ctrl.n}</span>
+          ${ctrl.fecha ? `<span style="font-weight:400;font-size:0.74rem;color:#777">${ctrl.fecha}</span>` : ''}
+        </div>
+        <!-- Botones de llamada -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          ${r.telefono
+            ? `<a href="tel:+${(r.telefono||'').replace(/\D/g,'')}" class="btn btn-sm" style="background:${col};color:#fff;text-decoration:none">📞 Llamar</a>
+               <a href="https://wa.me/${(r.telefono||'').replace(/\D/g,'')}" class="btn btn-sm" style="background:#25D366;color:#fff;text-decoration:none" target="_blank">💬 WhatsApp</a>`
+            : `<span style="font-size:0.78rem;color:#E74C3C">⚠️ Sin número</span>`}
+        </div>
+        <!-- Notas -->
+        <textarea id="notasCtrl_${id}_${ctrl.n}" placeholder="Notas de este control..."
+                  style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.8rem;resize:vertical;min-height:52px;box-sizing:border-box;margin-bottom:8px"
+                  >${(ctrl.notas||'').replace(/</g,'&lt;')}</textarea>
+        <!-- Captura -->
+        ${ctrl.capturaUrl ? `
+          <div style="margin-bottom:7px">
+            <a href="${ctrl.capturaUrl}" target="_blank">
+              <img src="${ctrl.capturaUrl}" style="max-width:100%;max-height:120px;object-fit:contain;border:1px solid #ddd;border-radius:6px"
+                   onerror="this.outerHTML='<a href=\\'${ctrl.capturaUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm\\' style=\\'background:#E8A000;color:#fff;text-decoration:none\\'>📄 Ver captura</a>'">
+            </a>
+          </div>` : `<div style="font-size:0.76rem;color:#aaa;margin-bottom:7px">Sin captura aún</div>`}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="file" id="fileCtrl_${id}_${ctrl.n}" accept="image/*,application/pdf"
+                 style="flex:1;font-size:0.75rem;min-width:0">
+          <button class="btn btn-sm" style="background:${col};color:#fff;white-space:nowrap"
+                  onclick="subirCapturaCtrl(${id},${ctrl.n})" id="btnCtrl_${id}_${ctrl.n}">
+            ⬆️ Subir
+          </button>
+          <button class="btn btn-sm" style="background:#555;color:#fff;white-space:nowrap"
+                  onclick="guardarNotasCtrl(${id},${ctrl.n})">
+            💾 Notas
+          </button>
+        </div>
+        <span id="stCtrl_${id}_${ctrl.n}" style="font-size:0.74rem;color:#555;display:block;margin-top:4px"></span>
+      </div>`;
+  }).join('');
+
+  const numNuevo = log.length + 1;
+  return `
+    <div id="listaControles_${id}">${tarjetas || '<div style="font-size:0.8rem;color:#aaa;margin-bottom:10px">Sin controles registrados aún.</div>'}</div>
+    <button class="btn btn-g btn-sm" style="width:100%;margin-top:4px"
+            onclick="agregarControl(${id})">
+      ➕ Agregar Control ${numNuevo}
+    </button>`;
 }
 
 function abrirModalLlamada(id) {
@@ -2462,27 +2747,19 @@ function abrirModalLlamada(id) {
   const tel2   = (r.telefono2 || '').replace(/\D/g,'');
   const telCol  = tel  ? tel  : null;
   const tel2Col = tel2 ? tel2 : null;
-  const waUrl   = telCol  ? `https://wa.me/${telCol}`  : null;
-  const telUrl  = telCol  ? `tel:+${telCol}`  : null;
-  const wa2Url  = tel2Col ? `https://wa.me/${tel2Col}` : null;
-  const tel2Url = tel2Col ? `tel:+${tel2Col}` : null;
 
-  document.getElementById('modalLlamadaTit').textContent = `📞 Llamada — ${nom}`;
+  document.getElementById('modalLlamadaTit').textContent = `📞 Seguimiento — ${nom}`;
 
   document.getElementById('modalLlamadaCont').innerHTML = `
     <div style="margin-bottom:14px">
       <div style="font-size:0.82rem;color:#555;margin-bottom:8px"><b>Paciente:</b> ${nom}</div>
 
       <!-- Teléfono principal -->
-      <div style="background:#f5f5f5;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="background:#f0faf0;border-radius:8px;padding:10px 12px;margin-bottom:8px;border:1px solid #c8e6c9">
         <div style="font-size:0.75rem;font-weight:700;color:#1B6B2A;margin-bottom:6px;text-transform:uppercase">📞 Teléfono Principal</div>
         ${tel ? `
-          <div style="font-size:1rem;font-weight:700;color:#222;margin-bottom:6px">+${telCol}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <a href="${telUrl}" class="btn btn-sm" style="background:#1B6B2A;color:#fff;text-decoration:none">📞 Llamar</a>
-            <a href="${waUrl}"  class="btn btn-sm" style="background:#25D366;color:#fff;text-decoration:none" target="_blank">💬 WhatsApp</a>
-          </div>` : `
-          <div style="font-size:0.8rem;color:#E74C3C;margin-bottom:6px">⚠️ Sin número registrado</div>`}
+          <div style="font-size:1rem;font-weight:700;color:#222;margin-bottom:6px">+${telCol}</div>` :
+          `<div style="font-size:0.8rem;color:#E74C3C;margin-bottom:6px">⚠️ Sin número registrado</div>`}
         <div style="display:flex;align-items:center;gap:6px">
           <select id="selInd1_${id}" style="padding:5px 4px;border:1px solid #1B6B2A;border-radius:6px;font-size:0.82rem;font-weight:700;color:#1B6B2A;background:#e8f5e9;max-width:90px">
             ${_optsIndicativo(r.telefono)}
@@ -2492,21 +2769,16 @@ function abrirModalLlamada(id) {
                  style="flex:1;padding:5px 8px;border:1px solid #1B6B2A;border-radius:6px;font-size:0.88rem;min-width:0"
                  maxlength="12" oninput="this.value=this.value.replace(/\D/g,'').slice(0,12)">
           <button class="btn btn-sm" onclick="guardarTelModal(${id},1)"
-                  style="background:#1B6B2A;color:#fff;white-space:nowrap">💾 Guardar</button>
+                  style="background:#1B6B2A;color:#fff;white-space:nowrap">💾</button>
         </div>
         <span id="stTel1_${id}" style="font-size:0.75rem;color:#555;display:block;margin-top:4px"></span>
       </div>
 
       <!-- Teléfono alternativo -->
-      <div style="background:#f9f4ff;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="background:#f9f4ff;border-radius:8px;padding:10px 12px;margin-bottom:8px;border:1px solid #e1bee7">
         <div style="font-size:0.75rem;font-weight:700;color:#6A1B9A;margin-bottom:6px;text-transform:uppercase">📲 Teléfono Alternativo</div>
-        ${tel2 ? `
-          <div style="font-size:1rem;font-weight:700;color:#222;margin-bottom:6px">+${tel2Col}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <a href="${tel2Url}" class="btn btn-sm" style="background:#6A1B9A;color:#fff;text-decoration:none">📞 Llamar</a>
-            <a href="${wa2Url}"  class="btn btn-sm" style="background:#25D366;color:#fff;text-decoration:none" target="_blank">💬 WhatsApp</a>
-          </div>` : `
-          <div style="font-size:0.8rem;color:#aaa;margin-bottom:6px">Sin teléfono alternativo</div>`}
+        ${tel2 ? `<div style="font-size:1rem;font-weight:700;color:#222;margin-bottom:6px">+${tel2Col}</div>`
+               : `<div style="font-size:0.8rem;color:#aaa;margin-bottom:6px">Sin teléfono alternativo</div>`}
         <div style="display:flex;align-items:center;gap:6px">
           <select id="selInd2_${id}" style="padding:5px 4px;border:1px solid #6A1B9A;border-radius:6px;font-size:0.82rem;font-weight:700;color:#6A1B9A;background:#f3e5f5;max-width:90px">
             ${_optsIndicativo(r.telefono2)}
@@ -2516,38 +2788,71 @@ function abrirModalLlamada(id) {
                  style="flex:1;padding:5px 8px;border:1px solid #6A1B9A;border-radius:6px;font-size:0.88rem;min-width:0"
                  maxlength="12" oninput="this.value=this.value.replace(/\D/g,'').slice(0,12)">
           <button class="btn btn-sm" onclick="guardarTelModal(${id},2)"
-                  style="background:#6A1B9A;color:#fff;white-space:nowrap">💾 Guardar</button>
+                  style="background:#6A1B9A;color:#fff;white-space:nowrap">💾</button>
         </div>
         <span id="stTel2_${id}" style="font-size:0.75rem;color:#555;display:block;margin-top:4px"></span>
       </div>
     </div>
+
     <div class="sep"></div>
-    <div style="margin-top:12px">
-      <div style="font-weight:700;font-size:0.88rem;margin-bottom:8px;color:#075E54">📸 Captura de llamada</div>
-      ${r.capturaLlamadaUrl ? `
-        <div style="margin-bottom:10px">
-          <div style="font-size:0.78rem;color:#555;margin-bottom:5px">Última captura guardada:</div>
-          <a href="${r.capturaLlamadaUrl}" target="_blank">
-            <img src="${r.capturaLlamadaUrl}" style="max-width:100%;max-height:180px;object-fit:contain;border:1px solid #ddd;border-radius:6px"
-                 onerror="this.outerHTML='<a href=\\'${r.capturaLlamadaUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm\\' style=\\'background:#E8A000;color:#fff;text-decoration:none\\'>📄 Ver captura</a>'">
-          </a>
-        </div>` : '<div style="font-size:0.8rem;color:#aaa;margin-bottom:10px">Sin captura guardada</div>'}
-      <label style="display:block;font-size:0.8rem;color:#555;margin-bottom:5px">Subir nueva captura (imagen o PDF):</label>
-      <input type="file" id="inputCaptura_${id}" accept="image/*,application/pdf"
-             style="width:100%;margin-bottom:8px;font-size:0.8rem">
-      <button class="btn btn-g btn-sm" onclick="subirCaptura(${id})" id="btnSubirCaptura_${id}">
-        ⬆️ Guardar captura
-      </button>
-      <span id="stCaptura_${id}" style="font-size:0.78rem;color:#555;margin-left:8px"></span>
+    <div style="margin-top:14px">
+      <div style="font-weight:700;font-size:0.9rem;margin-bottom:12px;color:#075E54;display:flex;align-items:center;gap:6px">
+        📋 Controles de seguimiento
+        <span style="font-size:0.72rem;font-weight:400;color:#888">(uno por llamada / visita)</span>
+      </div>
+      ${_renderControlesLlamada(r)}
     </div>`;
   document.getElementById('modalLlamadaBg').classList.remove('hidden');
 }
 
-async function subirCaptura(id) {
-  const input = document.getElementById(`inputCaptura_${id}`);
-  const btn   = document.getElementById(`btnSubirCaptura_${id}`);
-  const st    = document.getElementById(`stCaptura_${id}`);
-  if (!input?.files[0]) { st.textContent = '⚠️ Seleccione un archivo primero.'; return; }
+function agregarControl(id) {
+  const local = getLocal();
+  const idx = local.findIndex(r => String(r.id) === String(id));
+  if (idx < 0) return;
+  const r = local[idx];
+  // Migración
+  if (!r.llamadasLog) {
+    r.llamadasLog = r.capturaLlamadaUrl
+      ? [{ n: 1, fecha: new Date().toISOString().slice(0,10), notas: '', capturaUrl: r.capturaLlamadaUrl }]
+      : [];
+  }
+  const numNuevo = r.llamadasLog.length + 1;
+  r.llamadasLog.push({ n: numNuevo, fecha: new Date().toISOString().slice(0,10), notas: '', capturaUrl: null });
+  setLocal(local);
+  api.save(r).catch(()=>{});
+  // Re-renderizar solo la lista de controles
+  const cont = document.getElementById(`listaControles_${id}`);
+  const btnAgregar = cont?.nextElementSibling;
+  if (cont) cont.outerHTML = `<div id="listaControles_${id}">${_renderControlesLlamada(r).split('</div>\n    <button')[0].replace(/^[\s\S]*?<div id="listaControles_[^"]+">/, '')}</div>`;
+  // Reabrir el modal para refrescar todo limpiamente
+  abrirModalLlamada(id);
+}
+
+async function guardarNotasCtrl(id, n) {
+  const ta  = document.getElementById(`notasCtrl_${id}_${n}`);
+  const st  = document.getElementById(`stCtrl_${id}_${n}`);
+  if (!ta) return;
+  const local = getLocal();
+  const idx = local.findIndex(r => String(r.id) === String(id));
+  if (idx < 0) return;
+  if (!local[idx].llamadasLog) local[idx].llamadasLog = [];
+  const ctrl = local[idx].llamadasLog.find(c => c.n === n);
+  if (ctrl) ctrl.notas = ta.value;
+  setLocal(local);
+  st.textContent = 'Guardando...';
+  try {
+    await api.save(local[idx]);
+    st.textContent = '✅ Notas guardadas'; st.style.color='#1B6B2A';
+  } catch {
+    st.textContent = '⚠ Guardado local'; st.style.color='#E8A000';
+  }
+}
+
+async function subirCapturaCtrl(id, n) {
+  const input = document.getElementById(`fileCtrl_${id}_${n}`);
+  const btn   = document.getElementById(`btnCtrl_${id}_${n}`);
+  const st    = document.getElementById(`stCtrl_${id}_${n}`);
+  if (!input?.files[0]) { st.textContent = '⚠️ Seleccione un archivo.'; return; }
   btn.disabled = true; st.textContent = 'Subiendo...';
   try {
     const url = await api.uploadCertificado(id, input.files[0],
@@ -2555,18 +2860,26 @@ async function subirCaptura(id) {
     const local = getLocal();
     const idx = local.findIndex(r => String(r.id) === String(id));
     if (idx >= 0) {
+      if (!local[idx].llamadasLog) {
+        local[idx].llamadasLog = [{ n: 1, fecha: new Date().toISOString().slice(0,10), notas: '', capturaUrl: null }];
+      }
+      const ctrl = local[idx].llamadasLog.find(c => c.n === n);
+      if (ctrl) ctrl.capturaUrl = url;
+      // Compatibilidad: actualizar capturaLlamadaUrl con la más reciente
       local[idx].capturaLlamadaUrl = url;
       setLocal(local);
-      await supa.saveRecord(local[idx]).catch(()=>{});
+      await api.save(local[idx]).catch(()=>{});
     }
-    st.innerHTML = '✅ <a href="' + url + '" target="_blank">Ver captura</a>';
+    st.innerHTML = `✅ <a href="${url}" target="_blank" style="color:#1B6B2A">Ver captura</a>`;
     input.value = '';
-    // Actualizar botón de la fila
-    renderRecs(getLocal());
+    abrirModalLlamada(id);
   } catch(e) {
     st.textContent = '❌ Error: ' + (e.message || e);
   } finally { btn.disabled = false; }
 }
+
+// Legacy — mantener por si hay código externo que llame subirCaptura(id)
+async function subirCaptura(id) { return subirCapturaCtrl(id, 1); }
 
 // ── Export / Import ───────────────────────────────────────────
 function exportarJSON() {
@@ -2789,10 +3102,10 @@ function importarJSON(e) {
       const nuevos = inc.filter(r => !ids.has(r.id));
       const merged = [...exist, ...nuevos];
       setLocal(merged);
-      setSyncStatus('carg', 'Subiendo a Supabase...');
+      setSyncStatus('carg', 'Subiendo a Drive...');
       api.saveAll(merged)
-        .then(() => { setSyncStatus('ok', `✅ Supabase: ${merged.length} registro(s)`); actualizarDash(); })
-        .catch(() => setSyncStatus('err', 'Error al subir a Supabase'));
+        .then(() => { setSyncStatus('ok', `✅ Drive: ${merged.length} registro(s)`); actualizarDash(); })
+        .catch(() => setSyncStatus('err', 'Error al subir a Drive'));
       alert('Importados: ' + nuevos.length + ' nuevo(s). Duplicados ignorados: ' + (inc.length - nuevos.length));
     } catch { alert('Archivo JSON inválido.'); }
     e.target.value = '';
@@ -2979,22 +3292,22 @@ async function probarConexionDrive() {
 
 // ── Panel de Administración ───────────────────────────────────
 async function forzarSyncDesdeDrive() {
-  if (!confirm('⚠ Esto reemplazará la lista local con los usuarios que están en Supabase.\n¿Continuar?')) return;
+  if (!confirm('⚠ Esto reemplazará la lista local con los usuarios que están en Drive.\n¿Continuar?')) return;
   const btn = document.querySelector('[onclick="forzarSyncDesdeDrive()"]');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Cargando...'; }
   try {
     if (!navigator.onLine) { alerta('alAdmin', '❌ Sin conexión a internet.', 'err'); return; }
-    const supaUsers = await supa.loadUsers();
+    const supaUsers = await api.loadUsers();
     if (!supaUsers || supaUsers.length === 0) {
-      alerta('alAdmin', '⚠ Supabase devolvió lista vacía. No se reemplazó nada.', 'err'); return;
+      alerta('alAdmin', '⚠ Drive devolvió lista vacía. No se reemplazó nada.', 'err'); return;
     }
     setUsers(supaUsers);
-    alerta('alAdmin', '✅ Lista actualizada desde Supabase (' + supaUsers.length + ' usuarios).', 'ok');
+    alerta('alAdmin', '✅ Lista actualizada desde Drive (' + supaUsers.length + ' usuarios).', 'ok');
     await renderAdmin();
   } catch(err) {
-    alerta('alAdmin', '❌ Error al conectar con Supabase: ' + (err.message || err), 'err');
+    alerta('alAdmin', '❌ Error al conectar con Drive: ' + (err.message || err), 'err');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar desde Supabase'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar desde Drive'; }
   }
 }
 
@@ -3009,7 +3322,7 @@ async function renderAdmin() {
   if (puedeSync) {
     try {
       const driveUsers = await api.loadUsers();
-      // Supabase es fuente de verdad para existencia de usuarios.
+      // Drive es fuente de verdad para existencia de usuarios.
       // Un usuario local solo se re-sube si existe en Supabase (no fue borrado),
       // su versión local es más reciente y no está en tombstone.
       const merged = {};
