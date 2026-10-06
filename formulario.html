@@ -2093,12 +2093,19 @@ function renderRecs(recs) {
       <td><span class="bdg bdg-r">${r.tipoDiscapacidad||'-'}</span></td>
       <td class="col-opc">${r.regimen||'-'}</td><td>${rehab}</td><td style="text-align:center">${trat}</td>
       <td class="col-opc">${fReg}</td>
-      <td style="white-space:nowrap;text-align:center">
-        <button class="btn btn-sm" onclick="abrirMenuAcc(event,${r.id})"
-                style="background:#1B3A1F;color:#fff;font-size:0.82rem;padding:5px 13px;letter-spacing:.3px"
-                title="Ver opciones de este registro">
-          ⋮ Acciones
-        </button>
+      <td style="white-space:nowrap">
+        <button class="btn btn-b btn-sm" onclick="verDetalle(${r.id})">Ver</button>
+        <button class="btn btn-sm" style="background:#27AE60;color:#fff" onclick="verCarnet(${r.id})" title="Ver carnet del paciente">🪪</button>
+        <button class="btn btn-sm" style="background:#075E54;color:#fff" onclick="abrirModalLlamada(${r.id})" title="Gestionar llamada y seguimiento">📞</button>
+        ${(r.llamadasLog ? r.llamadasLog.filter(c=>c.capturaUrl).length > 0 : !!r.capturaLlamadaUrl)
+          ? `<a href="${(r.llamadasLog ? r.llamadasLog.filter(c=>c.capturaUrl).slice(-1)[0]?.capturaUrl : r.capturaLlamadaUrl)||'#'}" target="_blank" class="btn btn-sm" style="background:#00897B;color:#fff;text-decoration:none" title="Ver captura de seguimiento">📸</a>`
+          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.5" title="Sin captura">📸</span>`}
+        ${r.certificadoUrl
+          ? `<a href="${r.certificadoUrl}" target="_blank" class="btn btn-sm" style="background:#E8A000;color:#fff;text-decoration:none" title="Ver certificado">📄</a>`
+          : `<span class="btn btn-sm" style="background:#ccc;color:#fff;cursor:not-allowed;opacity:.6" title="Sin certificado">📄</span>`}
+        <button class="btn btn-sm" style="background:#8B0000;color:#fff" onclick="generarInformePDF(${r.id})" title="Generar informe PDF">📋</button>
+        ${esSA ? `<button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="cargarParaCompletar(${r.id})" title="Editar todos los datos del registro">✏️</button>` : ''}
+        ${esSA ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminar(${r.id})">✕</button>` : ''}
       </td></tr>`;
   }).join('');
   document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
