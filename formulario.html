@@ -1419,46 +1419,15 @@ async function sincronizar() {
       .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
-    // Subida tolerante a fallos — con límite de seguridad:
-    // Si hay MUCHOS registros solo-local, es señal de datos obsoletos en caché.
-    // No se suben automáticamente: se avisa y se eliminan del localStorage
-    // para que Drive sea la única fuente de verdad.
-    const LIMITE_SOLO_LOCAL = 10;
+    // Subida tolerante a fallos: un error en un registro no detiene toda la sync
     const erroresSubida = [];
-    if (soloLocal.length > LIMITE_SOLO_LOCAL) {
-      // Demasiados registros locales huérfanos: descartar y quedar con Drive
-      console.warn(`⚠ soloLocal=${soloLocal.length} supera el límite (${LIMITE_SOLO_LOCAL}). Se descartan y Drive es fuente de verdad.`);
-      const alSync = document.getElementById('alSync');
-      if (alSync) {
-        alSync.innerHTML = `
-          <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:8px;padding:12px 16px;margin-bottom:8px;font-size:0.82rem">
-            <b style="color:#92400E">⚠️ ${soloLocal.length} registros locales no están en Drive</b><br>
-            <span style="font-size:0.78rem;color:#78350F">
-              Son demasiados para subir automáticamente (límite: ${LIMITE_SOLO_LOCAL}).<br>
-              Drive es la fuente de verdad — se descartan los registros locales huérfanos.
-            </span>
-            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-sm" style="background:#D97706;color:#fff"
-                      onclick="forzarSyncDesdeDrive()">
-                🔄 Forzar sync desde Drive
-              </button>
-            </div>
-          </div>`;
-        alSync.style.display = '';
-      }
-      // Eliminar los locales huérfanos del localStorage (Drive manda)
-      const soloLocalIds = new Set(soloLocal.map(r => String(r.id)));
-      const sinHuerfanos = getLocal().filter(r => !soloLocalIds.has(String(r.id)));
-      setLocal(sinHuerfanos);
-    } else {
-      for (let i = 0; i < soloLocal.length; i++) {
-        setSyncStatus('carg', `Subiendo a Drive ${i + 1}/${soloLocal.length}...`);
-        try {
-          await api.save(soloLocal[i]);
-        } catch(eUp) {
-          erroresSubida.push({ id: soloLocal[i].id, err: eUp.message || String(eUp) });
-          console.warn('⚠ No se pudo subir registro', soloLocal[i].id, eUp);
-        }
+    for (let i = 0; i < soloLocal.length; i++) {
+      setSyncStatus('carg', `Subiendo a Drive ${i + 1}/${soloLocal.length}...`);
+      try {
+        await api.save(soloLocal[i]);
+      } catch(eUp) {
+        erroresSubida.push({ id: soloLocal[i].id, err: eUp.message || String(eUp) });
+        console.warn('⚠ No se pudo subir registro', soloLocal[i].id, eUp);
       }
     }
 
