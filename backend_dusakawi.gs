@@ -41,7 +41,7 @@ function doGet(e) {
       const record = JSON.parse(params.record);
       return buildResponse({ ok: true, data: saveRecordSafe(record) });
     } else if (action === 'delete') {
-      return buildResponse({ ok: true, data: deleteRecordSafe(params.id) });
+      return buildResponse({ ok: true, data: deleteRecordSafe(params.id, params.usuario) });
     } else if (action === 'saveAll') {
       const records = JSON.parse(params.records);
       saveRecords(records);
@@ -92,7 +92,7 @@ function doPost(e) {
       if (body.action === 'save') {
         result = saveRecordSafe(body.record);
       } else if (body.action === 'delete') {
-        result = deleteRecordSafe(body.id);
+        result = deleteRecordSafe(body.id, body.usuario);
       } else if (body.action === 'saveAll') {
         saveRecords(body.records);
         result = body.records.length;
@@ -216,10 +216,10 @@ function saveRecordSafe(record) {
   return records.length;
 }
 
-function deleteRecordSafe(id) {
+function deleteRecordSafe(id, usuario) {
   const records = getRecords().filter(r => String(r.id) !== String(id));
   saveRecords(records);
-  addTombstone(String(id));
+  addTombstone(String(id), usuario || 'Desconocido');
   return records.length;
 }
 
@@ -244,13 +244,16 @@ function saveTombstones(list) {
   else { folder.createFile(TOMBSTONES_FILE_NAME, content, MimeType.PLAIN_TEXT); }
 }
 
-function addTombstone(id) {
+function addTombstone(id, usuario) {
   try {
-    const list    = getTombstones();
+    const list = getTombstones();
     if (list.some(t => t.id === id)) return;
-    list.push({ id, deletedAt: new Date().toISOString() });
-    // Limpiar tombstones > TOMBSTONE_DAYS días
-    const cutoff  = new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString();
+    list.push({
+      id,
+      deletedAt:  new Date().toISOString(),
+      deletedBy:  usuario || 'Desconocido'
+    });
+    const cutoff = new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString();
     saveTombstones(list.filter(t => !t.deletedAt || t.deletedAt > cutoff));
   } catch(e) { Logger.log('addTombstone error: ' + e.message); }
 }

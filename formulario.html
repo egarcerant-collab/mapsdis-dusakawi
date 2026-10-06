@@ -916,7 +916,7 @@ const api = {
     }
     return this._post({ action: 'save', record });
   },
-  async remove(id) {
+  async remove(id, usuario) {
     if (this._gsOk()) {
       return new Promise((res, rej) => {
         google.script.run
@@ -925,7 +925,7 @@ const api = {
           .deleteRecord(String(id));
       });
     }
-    return this._post({ action: 'delete', id: String(id) });
+    return this._post({ action: 'delete', id: String(id), usuario: String(usuario || '') });
   },
   async saveAll(recs) {
     if (this._gsOk()) {
@@ -1377,7 +1377,44 @@ async function sincronizar() {
 
     // 3. Detectar registros locales que Drive no tiene → subirlos
     // CRÍTICO: excluir los que ya están en tombstones de Drive (evita resurrección entre dispositivos)
-    const supaIds = new Set(supaRecs.map(r => String(r.id)));
+    const supaIds  = new Set(supaRecs.map(r => String(r.id)));
+    const tombMap  = new Map(_driveTombstones.map(t => [t.id, t]));
+
+    // Registros locales bloqueados por tombstone de Drive (borrados por otro usuario)
+    const bloqueados = getLocal().filter(r =>
+      !supaIds.has(String(r.id)) &&
+      !wasDeleted(String(r.id)) &&
+      driveDeletedIds.has(String(r.id))
+    );
+    if (bloqueados.length > 0) {
+      // Agregar tombstone local para que no vuelva a aparecer en este dispositivo
+      bloqueados.forEach(r => markDeleted(r.id));
+      // Quitar del localStorage
+      const sinBloqueados = getLocal().filter(r => !driveDeletedIds.has(String(r.id)));
+      setLocal(sinBloqueados);
+      // Mostrar aviso al usuario
+      const alSync = document.getElementById('alSync');
+      if (alSync) {
+        const lista = bloqueados.map(r => {
+          const nom   = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || `ID ${r.id}`;
+          const tomb  = tombMap.get(String(r.id));
+          const quien = tomb?.deletedBy || 'otro usuario';
+          return `<li><b>${nom}</b> — eliminado por <span style="color:#DC2626">${quien}</span></li>`;
+        }).join('');
+        alSync.innerHTML = `
+          <div style="background:#FEF3C7;border:1.5px solid #D97706;border-radius:8px;padding:12px 16px;margin-bottom:8px;font-size:0.82rem">
+            <b style="color:#92400E">⚠️ ${bloqueados.length} registro(s) no se pudieron subir a Drive</b><br>
+            <span style="font-size:0.78rem;color:#78350F">Fueron eliminados por otro usuario y no pueden volver a Drive:</span>
+            <ul style="margin:7px 0 0 16px;font-size:0.78rem;color:#44403C">${lista}</ul>
+            <button class="btn btn-sm" style="margin-top:8px;background:#D97706;color:#fff"
+                    onclick="this.closest('div').parentElement.innerHTML='';this.closest('div').parentElement.style.display='none'">
+              ✓ Entendido
+            </button>
+          </div>`;
+        alSync.style.display = '';
+      }
+    }
+
     const soloLocal = getLocal()
       .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
@@ -2111,12 +2148,13 @@ async function eliminarSeleccionados() {
   if (!ids.length) return;
   if (!confirm(`¿Eliminar ${ids.length} registro(s) seleccionado(s) permanentemente? Esta acción no se puede deshacer.`)) return;
   setSyncStatus('carg', `Eliminando ${ids.length} registro(s)...`);
+  const usuario = getSess()?.name || getSess()?.username || 'Desconocido';
   let eliminados = 0;
   for (const id of ids) {
     markDeleted(id);
     const local = getLocal().filter(r => String(r.id) !== String(id));
     setLocal(local);
-    try { await api.remove(id); eliminados++; } catch(e) { console.warn('Error al eliminar', id, e); }
+    try { await api.remove(id, usuario); eliminados++; } catch(e) { console.warn('Error al eliminar', id, e); }
   }
   const restantes = getLocal();
   renderRecs(restantes); actualizarDash();
@@ -2209,17 +2247,17 @@ async function eliminar(id) {
     return;
   }
   if (!confirm('¿Eliminar este registro permanentemente?')) return;
-  markDeleted(id);  // tombstone: evita resurrección en otros dispositivos
+  const usuario = getSess()?.name || getSess()?.username || 'Desconocido';
+  markDeleted(id);
   const nuevos = getLocal().filter(r => String(r.id) !== String(id));
   setLocal(nuevos); renderRecs(nuevos); actualizarDash();
   setSyncStatus('carg', 'Eliminando en Drive...');
   try {
-    await api.remove(id);
+    await api.remove(id, usuario);
     setSyncStatus('ok', `✅ Drive: ${getLocal().length} registro(s)`);
   } catch(e) {
     setSyncStatus('err', '❌ Error al eliminar: ' + e.message);
     alert('❌ No se pudo eliminar en Drive:\n\n' + e.message);
-    // Tombstone garantiza que aunque falle ahora, en la próxima sync no vuelve
   }
 }
 
