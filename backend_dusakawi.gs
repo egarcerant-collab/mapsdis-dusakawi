@@ -62,6 +62,12 @@ function doGet(e) {
       return buildResponse({ ok: true, data: listBackups() });
     } else if (action === 'restoreBackup') {
       return buildResponse({ ok: true, data: restoreBackup(params.fileName, params.tipo) });
+    } else if (action === 'migrarCertificados') {
+      const res = _migrarLote('certificadoUrl');
+      return buildResponse({ ok: true, data: res });
+    } else if (action === 'migrarCapturas') {
+      const res = _migrarCapturasLote();
+      return buildResponse({ ok: true, data: res });
     } else {
       throw new Error('Acción desconocida: ' + action);
     }
@@ -453,6 +459,78 @@ function backupDiario() {
   } catch(e) {
     Logger.log('❌ Error en backup diario: ' + e.message);
   }
+}
+
+// ── Migración Supabase → Drive ────────────────────────────────
+// Se activa vía HTTP (corre como heidyveira que tiene acceso a Drive).
+// Desde la app: Admin → botón "Migrar certificados a Drive"
+// O directamente: [GAS_URL]?action=migrarCertificados
+const SUPA_HOST = 'supabase.co/storage';
+const LOTE_MIG  = 20;
+
+function _descargarYSubir(url, nombreBase, certFolder) {
+  const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) return null;
+  const urlPath  = url.split('?')[0];
+  const fileName = urlPath.split('/').pop() || nombreBase;
+  const ct       = resp.getHeaders()['Content-Type'] || 'application/octet-stream';
+  const mimeType = ct.split(';')[0].trim();
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const iterDup  = certFolder.getFilesByName(safeName);
+  if (iterDup.hasNext()) iterDup.next().setTrashed(true);
+  const blob = resp.getBlob().setName(safeName).setContentType(mimeType);
+  const f    = certFolder.createFile(blob);
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return 'https://drive.google.com/file/d/' + f.getId() + '/view';
+}
+
+function _migrarLote() {
+  const records    = getRecords();
+  const certFolder = getCertificadosFolder();
+  const pendientes = records.filter(r => r.certificadoUrl && r.certificadoUrl.includes(SUPA_HOST));
+  let migrados = 0, errores = 0;
+  for (let i = 0; i < Math.min(LOTE_MIG, pendientes.length); i++) {
+    const rec = pendientes[i];
+    try {
+      const newUrl = _descargarYSubir(rec.certificadoUrl, 'cert_' + rec.id, certFolder);
+      if (newUrl) {
+        const idx = records.findIndex(r => String(r.id) === String(rec.id));
+        if (idx >= 0) records[idx].certificadoUrl = newUrl;
+        migrados++;
+      } else { errores++; }
+    } catch(e) { errores++; }
+  }
+  saveRecords(records);
+  const restantes = records.filter(r => r.certificadoUrl && r.certificadoUrl.includes(SUPA_HOST)).length;
+  return { migrados, errores, restantes, completo: restantes === 0 };
+}
+
+function _migrarCapturasLote() {
+  const records    = getRecords();
+  const certFolder = getCertificadosFolder();
+  let migrados = 0, errores = 0;
+  for (const rec of records) {
+    if (!rec.llamadasLog) continue;
+    for (const ctrl of rec.llamadasLog) {
+      if (!ctrl.capturaUrl || !ctrl.capturaUrl.includes(SUPA_HOST)) continue;
+      try {
+        const newUrl = _descargarYSubir(ctrl.capturaUrl, 'captura_' + rec.id + '_ctrl' + ctrl.n, certFolder);
+        if (newUrl) { ctrl.capturaUrl = newUrl; migrados++; }
+        else errores++;
+      } catch(e) { errores++; }
+      if (migrados >= LOTE_MIG) break;
+    }
+    if (migrados >= LOTE_MIG) break;
+  }
+  // Actualizar capturaLlamadaUrl legacy con la última captura migrada
+  records.forEach(r => {
+    if (!r.llamadasLog) return;
+    const last = r.llamadasLog.filter(c => c.capturaUrl && !c.capturaUrl.includes(SUPA_HOST)).slice(-1)[0];
+    if (last) r.capturaLlamadaUrl = last.capturaUrl;
+  });
+  saveRecords(records);
+  const restantes = records.flatMap(r => r.llamadasLog || []).filter(c => c.capturaUrl && c.capturaUrl.includes(SUPA_HOST)).length;
+  return { migrados, errores, restantes, completo: restantes === 0 };
 }
 
 // ── Respuesta HTTP JSON ───────────────────────────────────────

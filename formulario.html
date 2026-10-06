@@ -690,6 +690,21 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
+      <div class="sh" style="background:#5C3566;color:#fff">🔄 Migración Supabase → Drive</div>
+      <div class="sb">
+        <p style="font-size:0.82rem;color:#555;margin-bottom:10px">
+          Mueve todos los certificados PDF y capturas almacenados en Supabase hacia Google Drive.<br>
+          Procesa <strong>20 archivos por lote</strong>. Ejecuta varias veces hasta ver <strong>Migración completa</strong>.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-sm" style="background:#5C3566;color:#fff" onclick="ejecutarMigracion('migrarCertificados')">📄 Migrar certificados</button>
+          <button class="btn btn-sm" style="background:#00695C;color:#fff" onclick="ejecutarMigracion('migrarCapturas')">📸 Migrar capturas</button>
+        </div>
+        <div id="alMigracion"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="sh sh-blue">⚙ Configuración del Servidor (Drive)</div>
       <div class="sb">
         <p style="font-size:0.82rem;color:#555;margin-bottom:12px">
@@ -2929,6 +2944,29 @@ async function subirCapturaCtrl(id, n) {
 
 // Legacy — mantener por si hay código externo que llame subirCaptura(id)
 async function subirCaptura(id) { return subirCapturaCtrl(id, 1); }
+
+// ── Migración Supabase → Drive ────────────────────────────────
+async function ejecutarMigracion(accion) {
+  const al = document.getElementById('alMigracion');
+  al.innerHTML = '<span style="color:#555">⏳ Procesando lote...</span>';
+  try {
+    const res = await api._get({ action: accion });
+    if (!res) { al.innerHTML = '<span style="color:#E74C3C">❌ Sin respuesta del servidor</span>'; return; }
+    const { migrados, errores, restantes, completo } = res;
+    if (completo) {
+      al.innerHTML = `<span style="color:#1B6B2A">✅ Migración completa. Todos los archivos están en Drive.</span>`;
+    } else {
+      al.innerHTML = `<span style="color:#E8A000">
+        ✅ Lote procesado: <strong>${migrados}</strong> migrados, ${errores} errores.<br>
+        Quedan <strong>${restantes}</strong> archivos.
+        <button class="btn btn-sm" style="background:#5C3566;color:#fff;margin-top:6px"
+                onclick="ejecutarMigracion('${accion}')">▶ Siguiente lote</button>
+      </span>`;
+    }
+  } catch(e) {
+    al.innerHTML = '<span style="color:#E74C3C">❌ Error: ' + (e.message || e) + '</span>';
+  }
+}
 
 // ── Export / Import ───────────────────────────────────────────
 function exportarJSON() {
