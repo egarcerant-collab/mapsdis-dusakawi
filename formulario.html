@@ -1320,7 +1320,9 @@ async function purgarRegistrosPrueba() {
     const nom = [r.primerNombre, r.segundoNombre, r.primerApellido, r.segundoApellido]
       .map(v => (v || '').toUpperCase()).join(' ');
     const id  = String(r.identificacion || '');
-    return /\bPRUEB[AO]\b/.test(nom) || /^(TEST|DEMO|PRUEBA|1213231|1007398620)$/.test(id.trim());
+    const idNum = id.replace(/\D/g, '');
+    const idFalso = /^(TEST|DEMO|PRUEBA|1213231|1007398620|5496161641641)$/.test(id.trim()) || idNum.length > 11;
+    return /\bPRUEB[AO]\b/.test(nom) || idFalso;
   };
 
   const local = getLocal();
