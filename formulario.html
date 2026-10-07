@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span id="syncBadge" class="sync-badge" style="display:none"></span>
+      <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
   </div>
@@ -1236,10 +1236,20 @@ const setSess  = s   => localStorage.setItem(K.sess,  JSON.stringify(s));
 function setSyncStatus(estado, msg) {
   const el = document.getElementById('syncBadge');
   if (!el) return;
-  if (estado === 'ok') { el.style.display = 'none'; return; }
-  const col = { err:'#E74C3C', carg:'#E67E22', off:'#7F8C8D' };
   el.style.display = '';
-  el.innerHTML = `<span style="color:${col[estado]||col.off}">⬤</span> ${msg}`;
+  if (estado === 'ok') {
+    // Extraer solo el número de registros del mensaje y mostrarlo limpio
+    const match = msg.match(/(\d+)/);
+    const n = match ? match[1] : '';
+    el.innerHTML = `<span style="color:#27AE60">⬤</span> ${n} registros`;
+  } else if (estado === 'err') {
+    el.innerHTML = `<span style="color:#E74C3C">⬤</span> ${msg}`;
+  } else if (estado === 'carg') {
+    // Durante subida: no mostrar progreso, mantener el último conteo
+    // (no actualizar el badge para no molestar al usuario)
+  } else {
+    el.innerHTML = `<span style="color:#7F8C8D">⬤</span> ${msg}`;
+  }
 }
 
 // ── Sincronización bidireccional ordenada ─────────────────────
