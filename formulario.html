@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span id="syncBadge" class="sync-badge">⬤ Cargando...</span>
+      <span id="syncBadge" class="sync-badge" style="display:none"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
   </div>
@@ -1234,9 +1234,11 @@ const setSess  = s   => localStorage.setItem(K.sess,  JSON.stringify(s));
 
 // ── Drive: estado visual ───────────────────────────────────────
 function setSyncStatus(estado, msg) {
-  const el  = document.getElementById('syncBadge');
+  const el = document.getElementById('syncBadge');
   if (!el) return;
-  const col = { ok:'#27AE60', err:'#E74C3C', carg:'#E67E22', off:'#7F8C8D' };
+  if (estado === 'ok') { el.style.display = 'none'; return; }
+  const col = { err:'#E74C3C', carg:'#E67E22', off:'#7F8C8D' };
+  el.style.display = '';
   el.innerHTML = `<span style="color:${col[estado]||col.off}">⬤</span> ${msg}`;
 }
 
