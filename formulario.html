@@ -3470,7 +3470,27 @@ async function renderAdmin() {
   }
 
   if (!users.length) { cont.innerHTML = '<p style="color:#aaa;text-align:center;padding:20px">Sin usuarios registrados.</p>'; return; }
-  cont.innerHTML = users.map(u => {
+  const _nSuper = users.filter(u => getPerfil(u)==='superadministrador').length;
+  const _nAdmin = users.filter(u => getPerfil(u)==='administrador').length;
+  const _nUser  = users.filter(u => getPerfil(u)==='usuario').length;
+  cont.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="flex:1;min-width:90px;background:#FEF9E7;border:1px solid #F0C040;border-radius:10px;padding:12px 10px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#B07800">${users.length}</div>
+      <div style="font-size:0.72rem;color:#8a6800;margin-top:2px">Total usuarios</div>
+    </div>
+    <div style="flex:1;min-width:90px;background:#FEF9E7;border:1px solid #F0C040;border-radius:10px;padding:12px 10px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#B07800">${_nSuper}</div>
+      <div style="font-size:0.72rem;color:#8a6800;margin-top:2px">⭐ Super Admin</div>
+    </div>
+    <div style="flex:1;min-width:90px;background:#E3F2FD;border:1px solid #90CAF9;border-radius:10px;padding:12px 10px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#1565C0">${_nAdmin}</div>
+      <div style="font-size:0.72rem;color:#1565C0;margin-top:2px">🔧 Admins</div>
+    </div>
+    <div style="flex:1;min-width:90px;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:12px 10px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#2E7D32">${_nUser}</div>
+      <div style="font-size:0.72rem;color:#2E7D32;margin-top:2px">👤 Usuarios</div>
+    </div>
+  </div>` + users.map(u => {
     const av    = (u.name||u.username).charAt(0).toUpperCase();
     const p = getPerfil(u);
     const suTag = p==='superadministrador'
