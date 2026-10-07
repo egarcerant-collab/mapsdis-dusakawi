@@ -710,7 +710,9 @@ tr:hover td{background:#fafafa}
           Asigna un nombre de funcionario a todos los registros donde el campo "Registrado por" está vacío.
         </p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-          <input type="text" id="inpFuncionarioAsignar" placeholder="Nombre del funcionario (ej: Heidy)" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;min-width:200px">
+          <select id="inpFuncionarioAsignar" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;min-width:220px">
+            <option value="">— Seleccionar funcionario —</option>
+          </select>
           <button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="asignarFuncionarioVacios()">✅ Asignar</button>
         </div>
         <div id="alAsignarFunc"></div>
@@ -3001,7 +3003,8 @@ async function subirCaptura(id) { return subirCapturaCtrl(id, 1); }
 
 // ── Asignar funcionario a registros sin autor ─────────────────
 async function asignarFuncionarioVacios() {
-  const nombre = (document.getElementById('inpFuncionarioAsignar').value || '').trim();
+  const sel = document.getElementById('inpFuncionarioAsignar');
+  const nombre = (sel ? sel.value : '').trim();
   const al = document.getElementById('alAsignarFunc');
   if (!nombre) { al.innerHTML = '<span style="color:#E74C3C">❌ Escribe el nombre del funcionario.</span>'; return; }
   al.innerHTML = '<span style="color:#555">⏳ Procesando...</span>';
@@ -3546,12 +3549,20 @@ async function renderAdmin() {
         <div class="usr-meta">@${u.username}${u.cargo?' · <em>'+u.cargo+'</em>':''} &nbsp;|&nbsp; Creado: ${creado}</div>
       </div>
       <div class="usr-acts">
+        ${u.username==='egarcerant' ? '<span style="font-size:0.72rem;color:#B07800">🔒 Protegido</span>' : `
         <button class="btn btn-b btn-sm" onclick="abrirEditarUsuario(${u.id})">✏️ Editar</button>
         <button class="btn btn-y btn-sm" onclick="abrirCambiarPass(${u.id})">🔑 Clave</button>
-        ${!u.superadmin ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminarUsuario(${u.id})">✕</button>` : ''}
+        ${!u.superadmin ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff" onclick="eliminarUsuario(${u.id})">✕</button>` : ''}`}
       </div>
     </div>`;
   }).join('');
+
+  // Poblar dropdown de asignación de funcionario
+  const selFunc = document.getElementById('inpFuncionarioAsignar');
+  if (selFunc) {
+    selFunc.innerHTML = '<option value="">— Seleccionar funcionario —</option>' +
+      users.map(u => `<option value="${u.name||u.username}">${u.name||u.username}</option>`).join('');
+  }
 }
 
 let _modoModal = 'edit';
@@ -3573,6 +3584,7 @@ function abrirCrearUsuario() {
 
 function abrirEditarUsuario(id) {
   const u = getUsers().find(x => x.id === id); if (!u) return;
+  if (u.username === 'egarcerant') { alert('🔒 Este usuario está protegido y no puede modificarse.'); return; }
   _modoModal = 'edit';
   document.getElementById('editUserId').value      = id;
   document.getElementById('editUserName').value    = u.name   || '';
@@ -3588,6 +3600,7 @@ function abrirEditarUsuario(id) {
 
 function abrirCambiarPass(id) {
   const u = getUsers().find(x => x.id === id); if (!u) return;
+  if (u.username === 'egarcerant') { alert('🔒 Este usuario está protegido y no puede modificarse.'); return; }
   _modoModal = 'pass';
   document.getElementById('editUserId').value       = id;
   document.getElementById('editUserUsername').value = u.username;
@@ -3691,6 +3704,7 @@ async function guardarCambiosUsuario() {
 async function eliminarUsuario(id) {
   const u = getUsers().find(x => x.id === id);
   if (!u) return;
+  if (u.username === 'egarcerant') { alert('🔒 Este usuario está protegido y no puede eliminarse.'); return; }
   if (!confirm('¿Eliminar al usuario @' + u.username + '? Esta acción no se puede deshacer.')) return;
   markDeletedUsr(id);                              // tombstone: evita resurrección
   setUsers(getUsers().filter(x => x.id !== id));
