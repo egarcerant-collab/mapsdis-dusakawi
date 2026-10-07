@@ -3452,7 +3452,12 @@ async function renderAdmin() {
       users.forEach(u => {
         const key = String(u.id);
         if (wasDeletedUsr(u.id)) return;         // tombstone → nunca resucitar
-        if (!merged[key]) return;                // ausente en Supabase = fue borrado
+        if (!merged[key]) {
+          // Usuario local no existe en Drive → subir (no descartar)
+          merged[key] = u;
+          api.saveUser(u).catch(() => {});
+          return;
+        }
         const uTs = u.updatedAt || u.createdAt || '';
         const dTs = merged[key].updatedAt || merged[key].createdAt || '';
         if (uTs > dTs) { merged[key] = u; api.saveUser(u).catch(() => {}); }
