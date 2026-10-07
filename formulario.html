@@ -1598,12 +1598,14 @@ async function doRegister() {
   setTimeout(()=>go('scrLogin'), 1800);
 }
 
-function doLogout() { localStorage.removeItem(K.sess); go('scrLogin'); }
+function doLogout() { doLogoutLimpiar(); localStorage.removeItem(K.sess); go('scrLogin'); }
 
 // ── Helpers de perfil ─────────────────────────────────────────
 const getPerfil    = u => u?.perfil || (u?.superadmin ? 'superadministrador' : 'usuario');
 const esSuperAdmin = u => getPerfil(u) === 'superadministrador';
 const esAdmin      = u => ['administrador','superadministrador'].includes(getPerfil(u));
+
+let _autoSyncTimer = null;
 
 function iniciarApp(user) {
   const perfil = getPerfil(user);
@@ -1614,11 +1616,32 @@ function iniciarApp(user) {
   if (btnAdmin) btnAdmin.classList.toggle('hidden', !esAdmin(user));
   go('scrApp');
   vista('recs');
+
+  // Sincronización inmediata al entrar
   setTimeout(sincronizar, 500);
+
+  // Auto-sync cada 5 minutos
+  if (_autoSyncTimer) clearInterval(_autoSyncTimer);
+  _autoSyncTimer = setInterval(() => {
+    if (getSess() && navigator.onLine) sincronizar();
+  }, 5 * 60 * 1000);
+
+  // Sync al volver a la pestaña (cuando el usuario regresa a la app)
+  document.addEventListener('visibilitychange', _onVisibilityChange);
+
   // Guardar usuario en Drive para que otros dispositivos puedan iniciar sesión
   if (navigator.onLine && api._url()) {
     setTimeout(() => api.saveUser(user).catch(() => {}), 3000);
   }
+}
+
+function _onVisibilityChange() {
+  if (!document.hidden && getSess() && navigator.onLine) sincronizar();
+}
+
+function doLogoutLimpiar() {
+  if (_autoSyncTimer) { clearInterval(_autoSyncTimer); _autoSyncTimer = null; }
+  document.removeEventListener('visibilitychange', _onVisibilityChange);
 }
 
 // ── Navegación ────────────────────────────────────────────────
