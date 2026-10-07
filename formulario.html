@@ -704,6 +704,20 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
+      <div class="sh" style="background:#1565C0;color:#fff">👤 Asignar funcionario a registros sin autor</div>
+      <div class="sb">
+        <p style="font-size:0.82rem;color:#555;margin-bottom:10px">
+          Asigna un nombre de funcionario a todos los registros donde el campo "Registrado por" está vacío.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <input type="text" id="inpFuncionarioAsignar" placeholder="Nombre del funcionario (ej: Heidy)" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;min-width:200px">
+          <button class="btn btn-sm" style="background:#1565C0;color:#fff" onclick="asignarFuncionarioVacios()">✅ Asignar</button>
+        </div>
+        <div id="alAsignarFunc"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="sh sh-blue">⚙ Configuración del Servidor (Drive)</div>
       <div class="sb">
         <p style="font-size:0.82rem;color:#555;margin-bottom:12px">
@@ -2984,6 +2998,27 @@ async function subirCapturaCtrl(id, n) {
 
 // Legacy — mantener por si hay código externo que llame subirCaptura(id)
 async function subirCaptura(id) { return subirCapturaCtrl(id, 1); }
+
+// ── Asignar funcionario a registros sin autor ─────────────────
+async function asignarFuncionarioVacios() {
+  const nombre = (document.getElementById('inpFuncionarioAsignar').value || '').trim();
+  const al = document.getElementById('alAsignarFunc');
+  if (!nombre) { al.innerHTML = '<span style="color:#E74C3C">❌ Escribe el nombre del funcionario.</span>'; return; }
+  al.innerHTML = '<span style="color:#555">⏳ Procesando...</span>';
+  const local = getLocal();
+  const vacios = local.filter(r => !r.registradoPor || r.registradoPor.trim() === '');
+  if (!vacios.length) { al.innerHTML = '<span style="color:#27AE60">✅ No hay registros sin funcionario.</span>'; return; }
+  vacios.forEach(r => { r.registradoPor = nombre; });
+  setLocal(local);
+  al.innerHTML = `<span style="color:#555">⏳ Guardando ${vacios.length} registros en Drive...</span>`;
+  try {
+    await api.saveAll(local);
+    al.innerHTML = `<span style="color:#27AE60">✅ ${vacios.length} registro(s) asignados a <strong>${nombre}</strong> y guardados en Drive.</span>`;
+    actualizarDash();
+  } catch(e) {
+    al.innerHTML = `<span style="color:#E8A000">⚠ Asignados localmente pero error al guardar en Drive: ${e.message}. Sincroniza para subir.</span>`;
+  }
+}
 
 // ── Migración Supabase → Drive ────────────────────────────────
 async function ejecutarMigracion(accion) {
