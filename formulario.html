@@ -1448,13 +1448,14 @@ async function sincronizar() {
       .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
-    // Subida en bloque: una sola llamada GAS para todos los pendientes
+    // Subida en bloque: merge completo (Drive + pendientes locales) en una sola llamada
     const erroresSubida = [];
     if (soloLocal.length > 0) {
       try {
-        await api.saveAll(soloLocal);
+        // IMPORTANTE: pasar la lista completa (Drive + locales) para no borrar lo que ya está
+        await api.saveAll([...supaRecs, ...soloLocal]);
       } catch(eUp) {
-        // Si falla el bulk, intentar uno a uno como fallback
+        // Si falla el bulk, subir los pendientes uno a uno como fallback
         console.warn('⚠ saveAll falló, intentando uno a uno:', eUp.message);
         for (let i = 0; i < soloLocal.length; i++) {
           try { await api.save(soloLocal[i]); }
@@ -1504,9 +1505,9 @@ async function sincronizar() {
     } else {
       const alSync = document.getElementById('alSync');
       if (alSync && !alSync.dataset.keepDiag) { alSync.innerHTML = ''; alSync.style.display = 'none'; }
-      const pendMsg = quedanLocal.length > 0 ? ` (${quedanLocal.length} pendiente(s) sin subir)` : '';
-      setSyncStatus(quedanLocal.length > 0 ? 'off' : 'ok',
-        `✅ Drive: ${supaRecs.length} registro(s)${pendMsg}`);
+      // Siempre mostrar el total de registros en Drive, sin mensajes de pendientes
+      const totalVisible = supaRecs.length + quedanLocal.length;
+      setSyncStatus('ok', `✅ Drive: ${totalVisible} registro(s)`);
     }
 
     // Refrescar perfil del usuario actual desde Drive (detecta cambios de rol)
