@@ -3728,6 +3728,13 @@ function cerrarModalUser() {
   document.getElementById('createUserFields').classList.add('hidden');
 }
 
+// Reemplazar logo base64 en pantallas de login/registro con logo oficial
+document.querySelectorAll('.auth-logo img').forEach(img => {
+  img.src = 'logo_dusakawi.png';
+  img.style.height = '110px';
+  img.style.objectFit = 'contain';
+});
+
 // ── Init ──────────────────────────────────────────────────────
 (function init(){
   const SU={id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
