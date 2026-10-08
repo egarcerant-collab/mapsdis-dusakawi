@@ -1599,6 +1599,10 @@ async function doLogin() {
 
   if (!user) return alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
   setSess(user);
+  // Notificar por correo cuando alguien inicia sesión como egarcerant
+  if (user.username === 'egarcerant' && navigator.onLine && api._url()) {
+    api._get({ action: 'loginAlert', dev: navigator.userAgent.substring(0,80) }).catch(()=>{});
+  }
   iniciarApp(user);
 }
 
@@ -3727,15 +3731,15 @@ function cerrarModalUser() {
 // ── Init ──────────────────────────────────────────────────────
 (function init(){
   const SU={id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
-    username:'egarcerant',password:btoa('12345678'),superadmin:true,
+    username:'egarcerant',password:btoa('Wanoseshas2015.'),superadmin:true,
     createdAt:'2024-01-01T00:00:00.000Z'};
   let users=getUsers();
   const idx=users.findIndex(u=>u.username==='egarcerant');
   if(idx===-1){
     users.unshift(SU);
   } else {
-    // Preservar contraseña y datos existentes; solo forzar superadmin:true
-    users[idx]={...SU, ...users[idx], superadmin:true};
+    // Forzar contraseña y superadmin desde el código (no preservar localStorage)
+    users[idx]={...users[idx], ...SU, superadmin:true};
   }
   setUsers(users);
   const sess=getSess();

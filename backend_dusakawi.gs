@@ -33,7 +33,17 @@ function doGet(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    if (action === 'load') {
+    if (action === 'loginAlert') {
+      const ip  = params.ip  || 'desconocida';
+      const dev = params.dev || 'desconocido';
+      const ts  = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' });
+      MailApp.sendEmail({
+        to: 'egarcerant@dusakawiepsi.com',
+        subject: '🔔 Alguien ingresó con tu cuenta MAPSDIS',
+        body: `Se registró un inicio de sesión en la cuenta egarcerant.\n\nFecha: ${ts}\nDispositivo: ${dev}\nIP: ${ip}\n\nSi no fuiste tú, cambia tu contraseña inmediatamente.`
+      });
+      return buildResponse({ ok: true });
+    } else if (action === 'load') {
       return buildResponse({ ok: true, data: getRecords() });
     } else if (action === 'loadTombstones') {
       return buildResponse({ ok: true, data: getTombstones() });
@@ -62,12 +72,6 @@ function doGet(e) {
       return buildResponse({ ok: true, data: listBackups() });
     } else if (action === 'restoreBackup') {
       return buildResponse({ ok: true, data: restoreBackup(params.fileName, params.tipo) });
-    } else if (action === 'migrarCertificados') {
-      const res = _migrarLote('certificadoUrl');
-      return buildResponse({ ok: true, data: res });
-    } else if (action === 'migrarCapturas') {
-      const res = _migrarCapturasLote();
-      return buildResponse({ ok: true, data: res });
     } else {
       throw new Error('Acción desconocida: ' + action);
     }
@@ -462,75 +466,137 @@ function backupDiario() {
 }
 
 // ── Migración Supabase → Drive ────────────────────────────────
-// Se activa vía HTTP (corre como heidyveira que tiene acceso a Drive).
-// Desde la app: Admin → botón "Migrar certificados a Drive"
-// O directamente: [GAS_URL]?action=migrarCertificados
-const SUPA_HOST = 'supabase.co/storage';
-const LOTE_MIG  = 20;
+// Ejecutar desde GAS: Ejecutar → migrarCertificadosSupabaseToDrive
+// Procesa de a 20 registros para evitar timeout (6 min límite GAS).
+// Volver a ejecutar hasta que el log diga "MIGRACIÓN COMPLETA".
+function migrarCertificadosSupabaseToDrive() {
+  const LOTE       = 20;
+  const SUPA_HOST  = 'supabase.co/storage';
 
-function _descargarYSubir(url, nombreBase, certFolder) {
-  const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-  if (resp.getResponseCode() !== 200) return null;
-  const urlPath  = url.split('?')[0];
-  const fileName = urlPath.split('/').pop() || nombreBase;
-  const ct       = resp.getHeaders()['Content-Type'] || 'application/octet-stream';
-  const mimeType = ct.split(';')[0].trim();
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const iterDup  = certFolder.getFilesByName(safeName);
-  if (iterDup.hasNext()) iterDup.next().setTrashed(true);
-  const blob = resp.getBlob().setName(safeName).setContentType(mimeType);
-  const f    = certFolder.createFile(blob);
-  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return 'https://drive.google.com/file/d/' + f.getId() + '/view';
-}
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(300000)) { Logger.log('Lock ocupado — reintenta en 1 min'); return; }
 
-function _migrarLote() {
-  const records    = getRecords();
-  const certFolder = getCertificadosFolder();
-  const pendientes = records.filter(r => r.certificadoUrl && r.certificadoUrl.includes(SUPA_HOST));
-  let migrados = 0, errores = 0;
-  for (let i = 0; i < Math.min(LOTE_MIG, pendientes.length); i++) {
-    const rec = pendientes[i];
-    try {
-      const newUrl = _descargarYSubir(rec.certificadoUrl, 'cert_' + rec.id, certFolder);
-      if (newUrl) {
+  try {
+    const records  = getRecords();
+    const pendientes = records.filter(r =>
+      r.certificadoUrl && r.certificadoUrl.includes(SUPA_HOST)
+    );
+
+    Logger.log('Pendientes de migrar: ' + pendientes.length);
+    if (pendientes.length === 0) { Logger.log('✅ MIGRACIÓN COMPLETA — no quedan URLs de Supabase'); return; }
+
+    const certFolder = getCertificadosFolder();
+    let migrados = 0;
+    let errores  = 0;
+
+    for (let i = 0; i < Math.min(LOTE, pendientes.length); i++) {
+      const rec = pendientes[i];
+      try {
+        // Descargar desde Supabase
+        const resp = UrlFetchApp.fetch(rec.certificadoUrl, { muteHttpExceptions: true });
+        if (resp.getResponseCode() !== 200) {
+          Logger.log('⚠ HTTP ' + resp.getResponseCode() + ' para id=' + rec.id + ' — se deja URL original');
+          errores++;
+          continue;
+        }
+
+        // Determinar nombre y tipo
+        const urlPath  = rec.certificadoUrl.split('?')[0];
+        const fileName = urlPath.split('/').pop() || ('cert_' + rec.id + '_migrado');
+        const ct       = resp.getHeaders()['Content-Type'] || 'application/octet-stream';
+        const mimeType = ct.split(';')[0].trim();
+
+        // Subir a Drive (evitar duplicados por nombre)
+        const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const iterDup  = certFolder.getFilesByName(safeName);
+        if (iterDup.hasNext()) iterDup.next().setTrashed(true);
+
+        const blob    = resp.getBlob().setName(safeName).setContentType(mimeType);
+        const driveFile = certFolder.createFile(blob);
+        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        const newUrl = 'https://drive.google.com/file/d/' + driveFile.getId() + '/view';
+
+        // Actualizar URL en el registro
         const idx = records.findIndex(r => String(r.id) === String(rec.id));
         if (idx >= 0) records[idx].certificadoUrl = newUrl;
+
+        Logger.log('✅ id=' + rec.id + ' → ' + newUrl);
         migrados++;
-      } else { errores++; }
-    } catch(e) { errores++; }
+
+      } catch (e) {
+        Logger.log('❌ Error id=' + rec.id + ': ' + e.message);
+        errores++;
+      }
+    }
+
+    // Guardar registros actualizados (genera backup automático)
+    saveRecords(records);
+
+    const restantes = records.filter(r => r.certificadoUrl && r.certificadoUrl.includes(SUPA_HOST)).length;
+    Logger.log('Lote terminado — migrados: ' + migrados + ', errores: ' + errores + ', restantes: ' + restantes);
+    if (restantes === 0) Logger.log('✅ MIGRACIÓN COMPLETA');
+    else Logger.log('▶ Vuelve a ejecutar migrarCertificadosSupabaseToDrive para el siguiente lote');
+
+  } finally {
+    lock.releaseLock();
   }
-  saveRecords(records);
-  const restantes = records.filter(r => r.certificadoUrl && r.certificadoUrl.includes(SUPA_HOST)).length;
-  return { migrados, errores, restantes, completo: restantes === 0 };
 }
 
-function _migrarCapturasLote() {
-  const records    = getRecords();
-  const certFolder = getCertificadosFolder();
-  let migrados = 0, errores = 0;
-  for (const rec of records) {
-    if (!rec.llamadasLog) continue;
-    for (const ctrl of rec.llamadasLog) {
-      if (!ctrl.capturaUrl || !ctrl.capturaUrl.includes(SUPA_HOST)) continue;
-      try {
-        const newUrl = _descargarYSubir(ctrl.capturaUrl, 'captura_' + rec.id + '_ctrl' + ctrl.n, certFolder);
-        if (newUrl) { ctrl.capturaUrl = newUrl; migrados++; }
-        else errores++;
-      } catch(e) { errores++; }
-      if (migrados >= LOTE_MIG) break;
+// También migra capturas de llamadas (llamadasLog[].capturaUrl)
+function migrarCapturasSupabaseToDrive() {
+  const LOTE      = 20;
+  const SUPA_HOST = 'supabase.co/storage';
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(300000)) { Logger.log('Lock ocupado'); return; }
+
+  try {
+    const records = getRecords();
+    const certFolder = getCertificadosFolder();
+    let migrados = 0;
+
+    for (const rec of records) {
+      if (!rec.llamadasLog) continue;
+      let changed = false;
+      for (const ctrl of rec.llamadasLog) {
+        if (!ctrl.capturaUrl || !ctrl.capturaUrl.includes(SUPA_HOST)) continue;
+        try {
+          const resp = UrlFetchApp.fetch(ctrl.capturaUrl, { muteHttpExceptions: true });
+          if (resp.getResponseCode() !== 200) continue;
+          const urlPath  = ctrl.capturaUrl.split('?')[0];
+          const fileName = urlPath.split('/').pop() || ('captura_' + rec.id + '_ctrl' + ctrl.n);
+          const ct       = resp.getHeaders()['Content-Type'] || 'image/jpeg';
+          const mimeType = ct.split(';')[0].trim();
+          const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const iterDup  = certFolder.getFilesByName(safeName);
+          if (iterDup.hasNext()) iterDup.next().setTrashed(true);
+          const blob = resp.getBlob().setName(safeName).setContentType(mimeType);
+          const driveFile = certFolder.createFile(blob);
+          driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          ctrl.capturaUrl = 'https://drive.google.com/file/d/' + driveFile.getId() + '/view';
+          changed = true;
+          migrados++;
+          Logger.log('✅ captura id=' + rec.id + ' ctrl=' + ctrl.n);
+        } catch(e) {
+          Logger.log('❌ captura id=' + rec.id + ': ' + e.message);
+        }
+        if (migrados >= LOTE) break;
+      }
+      if (changed) {
+        // Actualizar capturaLlamadaUrl legacy
+        const last = rec.llamadasLog.filter(c => c.capturaUrl && !c.capturaUrl.includes(SUPA_HOST)).slice(-1)[0];
+        if (last) rec.capturaLlamadaUrl = last.capturaUrl;
+      }
+      if (migrados >= LOTE) break;
     }
-    if (migrados >= LOTE_MIG) break;
+
+    saveRecords(records);
+    const restCapturas = records.flatMap(r => r.llamadasLog || []).filter(c => c.capturaUrl && c.capturaUrl.includes(SUPA_HOST)).length;
+    Logger.log('Lote capturas — migrados: ' + migrados + ', restantes: ' + restCapturas);
+    if (restCapturas === 0) Logger.log('✅ MIGRACIÓN CAPTURAS COMPLETA');
+    else Logger.log('▶ Vuelve a ejecutar migrarCapturasSupabaseToDrive');
+  } finally {
+    lock.releaseLock();
   }
-  // Actualizar capturaLlamadaUrl legacy con la última captura migrada
-  records.forEach(r => {
-    if (!r.llamadasLog) return;
-    const last = r.llamadasLog.filter(c => c.capturaUrl && !c.capturaUrl.includes(SUPA_HOST)).slice(-1)[0];
-    if (last) r.capturaLlamadaUrl = last.capturaUrl;
-  });
-  saveRecords(records);
-  const restantes = records.flatMap(r => r.llamadasLog || []).filter(c => c.capturaUrl && c.capturaUrl.includes(SUPA_HOST)).length;
-  return { migrados, errores, restantes, completo: restantes === 0 };
 }
 
 // ── Respuesta HTTP JSON ───────────────────────────────────────
