@@ -2191,7 +2191,16 @@ function renderRecs(recs) {
                 title="Ver acciones">⋮</button>
       </td></tr>`;
   }).join('');
-  document.getElementById('recCount').textContent='Mostrando '+recs.length+' registro(s)';
+  const _fc = document.getElementById('fFuncionario');
+  const _fv = _fc ? _fc.value.trim() : '';
+  const _rc = document.getElementById('recCount');
+  if (_fv) {
+    _rc.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px;background:#1B6B2A;color:#fff;padding:5px 14px;border-radius:20px;font-size:0.82rem;font-weight:600">
+      👤 ${_fv} &nbsp;·&nbsp; <span style="font-size:1.1rem;font-weight:700">${recs.length}</span> registro(s)
+    </span>`;
+  } else {
+    _rc.innerHTML = `<span style="color:#777">Mostrando ${recs.length} registro(s)</span>`;
+  }
   actualizarBarraSeleccion();
 }
 
