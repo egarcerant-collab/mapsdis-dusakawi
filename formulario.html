@@ -1562,6 +1562,23 @@ async function doLogin() {
   if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
   const _match = (stored, plain) => stored === btoa(plain) || stored === plain;
 
+  // egarcerant: contraseña siempre fijada desde código, no depende de Drive
+  if (u === 'egarcerant') {
+    if (btoa(p) !== btoa('Wanoseshas2015.')) {
+      alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
+      return;
+    }
+    const SU = {id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
+      username:'egarcerant',password:btoa('Wanoseshas2015.'),superadmin:true,
+      createdAt:'2024-01-01T00:00:00.000Z'};
+    setSess(SU);
+    if (navigator.onLine && api._url()) {
+      api._get({ action: 'loginAlert', dev: navigator.userAgent.substring(0,80) }).catch(()=>{});
+    }
+    iniciarApp(SU);
+    return;
+  }
+
   let user = null;
 
   // Con conexión: Drive SIEMPRE primero (garantiza permisos actualizados)
@@ -3729,13 +3746,13 @@ function cerrarModalUser() {
 }
 
 // Reemplazar logo base64 en pantallas de login/registro con logo oficial
-document.querySelectorAll('.auth-logo img').forEach(img => {
-  img.src = 'logo_dusakawi.png';
-  img.style.height = '110px';
-  img.style.objectFit = 'contain';
-  img.style.background = 'linear-gradient(135deg,#0D3B16,#1B6B2A)';
-  img.style.borderRadius = '12px';
-  img.style.padding = '10px 18px';
+document.querySelectorAll('.auth-logo').forEach(div => {
+  div.innerHTML = `<div style="display:inline-flex;align-items:center;justify-content:center;
+    width:100px;height:100px;border-radius:50%;
+    background:linear-gradient(135deg,#0D3B16,#27AE60);
+    box-shadow:0 4px 16px rgba(27,107,42,0.4);margin-bottom:4px">
+    <img src="logo_dusakawi.png" style="width:70px;height:70px;object-fit:contain">
+  </div>` + div.querySelector('.sub').outerHTML;
 });
 
 // ── Init ──────────────────────────────────────────────────────
