@@ -1645,7 +1645,7 @@ function iniciarApp(user) {
   if (_autoSyncTimer) clearInterval(_autoSyncTimer);
   _autoSyncTimer = setInterval(() => {
     if (getSess() && navigator.onLine) sincronizar();
-  }, 5 * 60 * 1000);
+  }, 30 * 1000);
 
   // Sync al volver a la pestaña (cuando el usuario regresa a la app)
   document.addEventListener('visibilitychange', _onVisibilityChange);
@@ -3741,8 +3741,8 @@ function cerrarModalUser() {
   const sess=getSess();
   if(sess){ iniciarApp(sess); } else { go('scrLogin'); }
   actualizarEstadoConexion();
-  // Auto-sincronizar cada 90 segundos para ver cambios de otros dispositivos
-  setInterval(() => { if(getSess() && navigator.onLine) sincronizar(); }, 90 * 1000);
+  // Auto-sincronizar cada 30 segundos para ver cambios de otros dispositivos en tiempo real
+  setInterval(() => { if(getSess() && navigator.onLine) sincronizar(); }, 30 * 1000);
   // Sincronizar al volver a la app (minimizada, cambio de pestaña, desbloqueo en móvil)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && getSess() && navigator.onLine) sincronizar();
