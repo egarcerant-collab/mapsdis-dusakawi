@@ -2854,6 +2854,10 @@ function _renderControlesLlamada(r) {
         <!-- Captura -->
         ${ctrl.capturaUrl ? `
           <div style="margin-bottom:7px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:0.75rem;color:#27AE60;font-weight:600">✅ Captura guardada</span>
+              ${esAdmin(getSess()) ? `<button onclick="eliminarCapturaCtrl(${id},${ctrl.n})" style="background:#E74C3C;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer">🗑️ Eliminar</button>` : ''}
+            </div>
             <a href="${ctrl.capturaUrl}" target="_blank">
               <img src="${ctrl.capturaUrl}" style="max-width:100%;max-height:120px;object-fit:contain;border:1px solid #ddd;border-radius:6px"
                    onerror="this.outerHTML='<a href=\\'${ctrl.capturaUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm\\' style=\\'background:#E8A000;color:#fff;text-decoration:none\\'>📄 Ver captura</a>'">
@@ -2998,9 +3002,8 @@ async function subirCapturaCtrl(id, n) {
   const btn   = document.getElementById(`btnCtrl_${id}_${n}`);
   const st    = document.getElementById(`stCtrl_${id}_${n}`);
   if (!input?.files[0]) { st.textContent = '⚠️ Seleccione un archivo.'; return; }
-  btn.disabled = true; st.textContent = 'Procesando...';
+  btn.disabled = true; st.textContent = 'Comprimiendo...';
   try {
-    // Comprimir imagen y guardar como data URL directo en el registro (sin Drive)
     const file = await api._comprimirSiImagen(input.files[0]);
     const dataUrl = await new Promise((res, rej) => {
       const r = new FileReader();
@@ -3018,14 +3021,28 @@ async function subirCapturaCtrl(id, n) {
     if (ctrl) ctrl.capturaUrl = dataUrl;
     local[idx].capturaLlamadaUrl = dataUrl;
     setLocal(local);
-    st.textContent = 'Guardando...';
-    await api.save(local[idx]).catch(()=>{});
-    st.innerHTML = `✅ Captura guardada`;
+    // Mostrar confirmación inmediata; sincronizar con Drive en segundo plano
     input.value = '';
     abrirModalLlamada(id);
+    api.save(local[idx]).catch(()=>{});
   } catch(e) {
     st.textContent = '❌ Error: ' + (e.message || e);
-  } finally { btn.disabled = false; }
+    btn.disabled = false;
+  }
+}
+
+async function eliminarCapturaCtrl(id, n) {
+  if (!esAdmin(getSess())) { alert('Solo administradores pueden eliminar capturas.'); return; }
+  if (!confirm('¿Eliminar esta captura?')) return;
+  const local = getLocal();
+  const idx = local.findIndex(r => String(r.id) === String(id));
+  if (idx < 0) return;
+  const ctrl = local[idx].llamadasLog?.find(c => c.n === n);
+  if (ctrl) ctrl.capturaUrl = null;
+  if (local[idx].llamadasLog?.every(c => !c.capturaUrl)) local[idx].capturaLlamadaUrl = null;
+  setLocal(local);
+  abrirModalLlamada(id);
+  api.save(local[idx]).catch(()=>{});
 }
 
 // Legacy — mantener por si hay código externo que llame subirCaptura(id)
