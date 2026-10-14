@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.0</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.1</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -1289,8 +1289,7 @@ function setSyncStatus(estado, msg) {
   } else if (estado === 'err') {
     el.innerHTML = `<span style="color:#E74C3C">⬤</span> ${msg}`;
   } else if (estado === 'carg') {
-    // Durante subida: no mostrar progreso, mantener el último conteo
-    // (no actualizar el badge para no molestar al usuario)
+    el.innerHTML = `<span style="color:#F39C12">⬤</span> ${msg}`;
   } else {
     el.innerHTML = `<span style="color:#7F8C8D">⬤</span> ${msg}`;
   }
@@ -1492,23 +1491,17 @@ async function sincronizar() {
       .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
-    // Subida en bloque: merge completo (Drive + pendientes locales) en una sola llamada
+    // Subida uno a uno: más confiable que bulk (evita límites de payload GAS)
     const erroresSubida = [];
     if (soloLocal.length > 0) {
-      try {
-        // IMPORTANTE: pasar la lista completa (Drive + locales) para no borrar lo que ya está
-        await api.saveAll([...supaRecs, ...soloLocal]);
-      } catch(eUp) {
-        // Si falla el bulk, subir los pendientes uno a uno como fallback
-        console.warn('⚠ saveAll falló, intentando uno a uno:', eUp.message);
-        for (let i = 0; i < soloLocal.length; i++) {
-          try { await api.save(soloLocal[i]); }
-          catch(e2) { erroresSubida.push({ id: soloLocal[i].id, err: e2.message || String(e2) }); }
-        }
+      for (let i = 0; i < soloLocal.length; i++) {
+        setSyncStatus('carg', `⬆ Subiendo ${i + 1}/${soloLocal.length} pendiente(s)...`);
+        try { await api.save(soloLocal[i]); }
+        catch(e2) { erroresSubida.push({ id: soloLocal[i].id, err: e2.message || String(e2) }); }
       }
     }
 
-    // 4. Estado final desde Drive (fuente única de verdad)
+    // 4. Estado final desde Drive (fuente única de verdad) — siempre recargar si hubo cambios
     if (soloLocal.length > 0) supaRecs = await api.load();
 
     // Nunca resucitar registros eliminados (local o Drive tombstone)
@@ -1549,9 +1542,15 @@ async function sincronizar() {
     } else {
       const alSync = document.getElementById('alSync');
       if (alSync && !alSync.dataset.keepDiag) { alSync.innerHTML = ''; alSync.style.display = 'none'; }
-      // Siempre mostrar el total de registros en Drive, sin mensajes de pendientes
-      const totalVisible = supaRecs.length + quedanLocal.length;
-      setSyncStatus('ok', `✅ Drive: ${totalVisible} registro(s)`);
+      const totalDrive = supaRecs.length;
+      const pendientes = quedanLocal.length;
+      if (pendientes > 0) {
+        // Hay registros locales que aún no confirmó Drive → reintentar en 10s
+        setSyncStatus('off', `⚠ ${totalDrive} en Drive · ${pendientes} pendiente(s) de subir`);
+        setTimeout(() => { if (getSess() && navigator.onLine) sincronizar(); }, 10000);
+      } else {
+        setSyncStatus('ok', `✅ Drive: ${totalDrive} registro(s)`);
+      }
     }
 
     // Refrescar perfil del usuario actual desde Drive (detecta cambios de rol)
