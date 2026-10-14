@@ -1073,29 +1073,23 @@ const api = {
               .uploadCertificadoGAS(String(recordId), file.name, b64, file.type);
             return;
           }
-          // Web externa: POST + polling de resultado
+          // Web externa: POST directo con CORS — lee URL en la misma respuesta
           if (!this._url()) { rej(new Error('Sin URL de servidor configurada')); return; }
-          const uploadId = 'up' + Date.now();
-          await fetch(this._url(), {
-            method: 'POST', mode: 'no-cors',
+          if (onProgress) onProgress(2, 10);
+          const resp = await fetch(this._url(), {
+            method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
-              action: 'uploadCertificado', uploadId,
+              action: 'uploadCertificado',
               recordId: String(recordId), fileName: file.name,
               base64Data: b64, mimeType: file.type
             })
           });
-          if (onProgress) onProgress(1, 20);
-          await new Promise(r => setTimeout(r, 5000));
-          for (let i = 2; i <= 20; i++) {
-            if (onProgress) onProgress(i, 20);
-            try {
-              const driveUrl = await this._get({ action: 'checkUpload', uploadId });
-              if (driveUrl) { res(driveUrl); return; }
-            } catch (_) {}
-            if (i < 20) await new Promise(r => setTimeout(r, 2000));
-          }
-          rej(new Error('Tiempo de espera agotado. Intente de nuevo.'));
+          if (onProgress) onProgress(9, 10);
+          const data = await resp.json();
+          if (onProgress) onProgress(10, 10);
+          if (data?.data) { res(data.data); return; }
+          rej(new Error(data?.error || 'No se recibió URL del archivo'));
         } catch (err) { rej(err); }
       };
       reader.onerror = rej;
