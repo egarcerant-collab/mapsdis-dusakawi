@@ -2997,24 +2997,29 @@ async function subirCapturaCtrl(id, n) {
   const btn   = document.getElementById(`btnCtrl_${id}_${n}`);
   const st    = document.getElementById(`stCtrl_${id}_${n}`);
   if (!input?.files[0]) { st.textContent = '⚠️ Seleccione un archivo.'; return; }
-  btn.disabled = true; st.textContent = 'Subiendo...';
+  btn.disabled = true; st.textContent = 'Procesando...';
   try {
-    const url = await api.uploadCertificado(id, input.files[0],
-      (i, t) => { st.textContent = `Subiendo ${Math.round(i/t*100)}%...`; });
+    // Comprimir imagen y guardar como data URL directo en el registro (sin Drive)
+    const file = await api._comprimirSiImagen(input.files[0]);
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
     const local = getLocal();
     const idx = local.findIndex(r => String(r.id) === String(id));
-    if (idx >= 0) {
-      if (!local[idx].llamadasLog) {
-        local[idx].llamadasLog = [{ n: 1, fecha: new Date().toISOString().slice(0,10), notas: '', capturaUrl: null }];
-      }
-      const ctrl = local[idx].llamadasLog.find(c => c.n === n);
-      if (ctrl) ctrl.capturaUrl = url;
-      // Compatibilidad: actualizar capturaLlamadaUrl con la más reciente
-      local[idx].capturaLlamadaUrl = url;
-      setLocal(local);
-      await api.save(local[idx]).catch(()=>{});
+    if (idx < 0) { st.textContent = '❌ Registro no encontrado.'; return; }
+    if (!local[idx].llamadasLog) {
+      local[idx].llamadasLog = [{ n: 1, fecha: new Date().toISOString().slice(0,10), notas: '', capturaUrl: null }];
     }
-    st.innerHTML = `✅ <a href="${url}" target="_blank" style="color:#1B6B2A">Ver captura</a>`;
+    const ctrl = local[idx].llamadasLog.find(c => c.n === n);
+    if (ctrl) ctrl.capturaUrl = dataUrl;
+    local[idx].capturaLlamadaUrl = dataUrl;
+    setLocal(local);
+    st.textContent = 'Guardando...';
+    await api.save(local[idx]).catch(()=>{});
+    st.innerHTML = `✅ Captura guardada`;
     input.value = '';
     abrirModalLlamada(id);
   } catch(e) {
