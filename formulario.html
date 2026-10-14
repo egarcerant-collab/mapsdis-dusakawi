@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.2</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.3</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -3066,8 +3066,16 @@ async function subirCapturaCtrl(id, n) {
       if (imgEl) { imgEl.src = dataUrl; imgEl.style.display = ''; }
       if (loadEl) loadEl.style.display = 'none';
     }, 100);
-    // Guardar captura como JSON en Drive (sin setSharing) + actualizar registro
-    api.saveCaptura(id, n, dataUrl).catch(()=>{});
+    // Guardar captura como JSON en Drive + actualizar registro
+    api.saveCaptura(id, n, dataUrl).then(() => {
+      // Confirmar en el badge cuando Drive la recibe
+      const loadEl2 = document.getElementById('capLoad_' + id + '_' + n);
+      if (loadEl2) loadEl2.innerHTML = '<span style="font-size:0.72rem;color:#27AE60">✅ Guardada en Drive</span>';
+    }).catch(e => {
+      const loadEl2 = document.getElementById('capLoad_' + id + '_' + n);
+      if (loadEl2) loadEl2.innerHTML = `<span style="font-size:0.72rem;color:#E8A000">⚠ Solo local (Drive: ${e.message||'error'})</span>
+        <button onclick="resubirCaptura(${id},${n})" style="margin-left:6px;background:#E8A000;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer">🔄 Reintentar Drive</button>`;
+    });
     api.save(local[idx]).catch(()=>{});
   } catch(e) {
     st.textContent = '❌ Error: ' + (e.message || e);
@@ -3101,11 +3109,52 @@ async function cargarCapturaImg(id, n, capRef) {
       imgEl.src = dataUrl; imgEl.style.display = '';
       if (loadEl) loadEl.style.display = 'none';
     } else {
-      if (loadEl) loadEl.innerHTML = '<span style="font-size:0.75rem;color:#E8A000">⚠ No se encontró en Drive</span>';
+      if (loadEl) loadEl.innerHTML = `<span style="font-size:0.75rem;color:#E8A000">⚠ No sincronizada en Drive</span>
+        <br><span style="font-size:0.72rem;color:#aaa">Re-súbela desde el dispositivo original o usa el botón:</span>
+        <br><label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;background:#1565C0;color:#fff;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer">
+          📁 Seleccionar archivo
+          <input type="file" accept="image/*,application/pdf" style="display:none" onchange="resubirCapturaDesdeArchivo(${id},${n},this)">
+        </label>`;
     }
   } catch(e) {
     if (loadEl) loadEl.innerHTML = `<span style="font-size:0.75rem;color:#E74C3C">❌ ${e.message}</span>
       <button onclick="cargarCapturaImg(${id},${n})" style="margin-left:8px;background:#555;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer">Reintentar</button>`;
+  }
+}
+
+async function resubirCaptura(id, n) {
+  const cached = (() => { try { return localStorage.getItem('capCache_' + id + '_' + n); } catch(_) { return null; } })();
+  if (!cached) { alert('No hay caché local de esta captura. Selecciona el archivo desde el botón.'); return; }
+  const loadEl = document.getElementById('capLoad_' + id + '_' + n);
+  if (loadEl) loadEl.innerHTML = '<span style="font-size:0.75rem;color:#555">⏳ Resubiendo a Drive...</span>';
+  try {
+    await api.saveCaptura(id, n, cached);
+    if (loadEl) loadEl.innerHTML = '<span style="font-size:0.72rem;color:#27AE60">✅ Guardada en Drive</span>';
+    const imgEl = document.getElementById('capImg_' + id + '_' + n);
+    if (imgEl) { imgEl.src = cached; imgEl.style.display = ''; }
+    if (loadEl) loadEl.style.display = 'none';
+  } catch(e) {
+    if (loadEl) loadEl.innerHTML = `<span style="font-size:0.72rem;color:#E74C3C">❌ ${e.message}</span>`;
+  }
+}
+
+async function resubirCapturaDesdeArchivo(id, n, input) {
+  if (!input.files[0]) return;
+  const loadEl = document.getElementById('capLoad_' + id + '_' + n);
+  if (loadEl) loadEl.innerHTML = '<span style="font-size:0.75rem;color:#555">⏳ Procesando...</span>';
+  try {
+    const file = await api._comprimirSiImagen(input.files[0]);
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+    });
+    try { localStorage.setItem('capCache_' + id + '_' + n, dataUrl); } catch(_) {}
+    if (loadEl) loadEl.innerHTML = '<span style="font-size:0.75rem;color:#555">⏳ Subiendo a Drive...</span>';
+    await api.saveCaptura(id, n, dataUrl);
+    const imgEl = document.getElementById('capImg_' + id + '_' + n);
+    if (imgEl) { imgEl.src = dataUrl; imgEl.style.display = ''; }
+    if (loadEl) loadEl.style.display = 'none';
+  } catch(e) {
+    if (loadEl) loadEl.innerHTML = `<span style="font-size:0.72rem;color:#E74C3C">❌ ${e.message}</span>`;
   }
 }
 
