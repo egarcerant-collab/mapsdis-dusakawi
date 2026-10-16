@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.3</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.4</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -1491,13 +1491,37 @@ async function sincronizar() {
       .filter(r => !supaIds.has(String(r.id)) && !wasDeleted(String(r.id)) && !driveDeletedIds.has(String(r.id)))
       .sort((a, b) => (a.id || 0) - (b.id || 0));
 
-    // Subida uno a uno: más confiable que bulk (evita límites de payload GAS)
+    // Subida: bulk si hay muchos pendientes (> 15), uno a uno si son pocos
     const erroresSubida = [];
     if (soloLocal.length > 0) {
-      for (let i = 0; i < soloLocal.length; i++) {
-        setSyncStatus('carg', `⬆ Subiendo ${i + 1}/${soloLocal.length} pendiente(s)...`);
-        try { await api.save(soloLocal[i]); }
-        catch(e2) { erroresSubida.push({ id: soloLocal[i].id, err: e2.message || String(e2) }); }
+      if (soloLocal.length > 15) {
+        // Bulk: un solo POST con todos los registros (Drive + pendientes)
+        setSyncStatus('carg', `⬆ Sincronizando ${soloLocal.length} pendiente(s)...`);
+        try {
+          await api.saveAll([...supaRecs, ...soloLocal]);
+        } catch(eUp) {
+          // Fallback: subir en lotes de 20
+          console.warn('saveAll falló, subiendo por lotes:', eUp.message);
+          const LOTE = 20;
+          for (let i = 0; i < soloLocal.length; i += LOTE) {
+            const lote = soloLocal.slice(i, i + LOTE);
+            setSyncStatus('carg', `⬆ Subiendo ${Math.min(i + LOTE, soloLocal.length)}/${soloLocal.length}...`);
+            try { await api.saveAll([...supaRecs, ...soloLocal.slice(0, i + LOTE)]); }
+            catch(e2) {
+              for (const r of lote) {
+                try { await api.save(r); }
+                catch(e3) { erroresSubida.push({ id: r.id, err: e3.message || String(e3) }); }
+              }
+            }
+          }
+        }
+      } else {
+        // Pocos pendientes: uno a uno (más confiable para pequeñas cantidades)
+        for (let i = 0; i < soloLocal.length; i++) {
+          setSyncStatus('carg', `⬆ ${i + 1}/${soloLocal.length} pendiente(s)...`);
+          try { await api.save(soloLocal[i]); }
+          catch(e2) { erroresSubida.push({ id: soloLocal[i].id, err: e2.message || String(e2) }); }
+        }
       }
     }
 
