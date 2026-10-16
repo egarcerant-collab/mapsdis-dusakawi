@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.9</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.10</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -1577,15 +1577,26 @@ async function sincronizar() {
       }
     }
 
-    // Refrescar perfil del usuario actual desde Drive (detecta cambios de rol)
+    // Refrescar perfil del usuario actual desde Drive + subir usuarios locales faltantes
     try {
       const supaUsers = await api.loadUsers();
-      setUsers(supaUsers);
+      // Subir usuarios locales que Drive no tiene (evita pérdida si solo están en localStorage)
+      const localUsers = getUsers();
+      const driveIds = new Set(supaUsers.map(u => String(u.id)));
+      const driveNames = new Set(supaUsers.map(u => (u.username||'').toLowerCase()));
+      const faltanEnDrive = localUsers.filter(u =>
+        u.username && !driveIds.has(String(u.id)) && !driveNames.has((u.username||'').toLowerCase())
+      );
+      for (const u of faltanEnDrive) {
+        try { await api.saveUser(u); } catch(_) {}
+      }
+      // Si subimos usuarios, recargar la lista actualizada de Drive
+      const driveUsersFinal = faltanEnDrive.length > 0 ? await api.loadUsers() : supaUsers;
+      setUsers(driveUsersFinal);
       const sess = getSess();
       if (sess) {
-        // Buscar por ID primero, luego por username como fallback
-        const userActual = supaUsers.find(x => String(x.id) === String(sess.id))
-                        || supaUsers.find(x => x.username === sess.username);
+        const userActual = driveUsersFinal.find(x => String(x.id) === String(sess.id))
+                        || driveUsersFinal.find(x => x.username === sess.username);
         if (userActual) {
           const perfilViejo = sess.perfil || (sess.superadmin ? 'superadministrador' : 'usuario');
           const perfilNuevo = userActual.perfil || (userActual.superadmin ? 'superadministrador' : 'usuario');
@@ -1617,12 +1628,12 @@ async function doLogin() {
 
   // egarcerant: contraseña siempre fijada desde código, no depende de Drive
   if (u === 'egarcerant') {
-    if (btoa(p) !== btoa('Wanoseshas2015.')) {
+    if (btoa(p) !== btoa('123456')) {
       alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
       return;
     }
     const SU = {id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
-      username:'egarcerant',password:btoa('Wanoseshas2015.'),superadmin:true,
+      username:'egarcerant',password:btoa('123456'),superadmin:true,
       createdAt:'2024-01-01T00:00:00.000Z'};
     setSess(SU);
     if (navigator.onLine && api._url()) {
