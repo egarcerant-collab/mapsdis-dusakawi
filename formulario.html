@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.5</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.6</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -1583,13 +1583,14 @@ async function sincronizar() {
       setUsers(supaUsers);
       const sess = getSess();
       if (sess) {
-        const userActual = supaUsers.find(x => String(x.id) === String(sess.id));
+        // Buscar por ID primero, luego por username como fallback
+        const userActual = supaUsers.find(x => String(x.id) === String(sess.id))
+                        || supaUsers.find(x => x.username === sess.username);
         if (userActual) {
           const perfilViejo = sess.perfil || (sess.superadmin ? 'superadministrador' : 'usuario');
           const perfilNuevo = userActual.perfil || (userActual.superadmin ? 'superadministrador' : 'usuario');
-          if (perfilNuevo !== perfilViejo) {
+          if (perfilNuevo !== perfilViejo || String(userActual.id) !== String(sess.id)) {
             setSess(userActual);
-            // Recargar UI con nuevos permisos
             iniciarApp(userActual);
           } else {
             setSess({ ...sess, ...userActual });
