@@ -3,7 +3,7 @@
 //  Versión: 5.0
 // ================================================================
 
-const CACHE = 'dusakawi-mapsdis-v19';
+const CACHE = 'dusakawi-mapsdis-v20';
 const ASSETS = [
   './manifest.json',
   './logo_dusakawi.png'
