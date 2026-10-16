@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.6</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.7</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -2755,7 +2755,11 @@ function abrirMenuAcc(ev, id) {
   ev.stopPropagation();
   const r   = getLocal().find(x => String(x.id) === String(id));
   if (!r) return;
-  const esSA = esSuperAdmin(getSess());
+  // Usar rol más reciente: lista de usuarios sincronizada > sesión almacenada
+  const _sess = getSess();
+  const _userFresh = getUsers().find(u => u.username === _sess?.username) || _sess;
+  const esSA     = esSuperAdmin(_userFresh);
+  const _esAdmin = esAdmin(_userFresh);
   const nom  = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || 'Paciente';
 
   const capturaUrl = r.llamadasLog
@@ -2776,7 +2780,7 @@ function abrirMenuAcc(ev, id) {
       ? { bg:'#E8A000', icon:'📄', title:'Ver certificado',        isLink:true, href: r.certificadoUrl }
       : { bg:'#ccc',    icon:'📄', title:'Sin certificado',        disabled:true },
     { bg:'#8B0000', icon:'📋',   title:'Generar informe PDF',      fn:`generarInformePDF(${id})` },
-    ...(esAdmin(getSess()) ? [
+    ...(_esAdmin ? [
       { bg:'#1565C0', icon:'✏️', title:'Editar todos los datos',   fn:`cargarParaCompletar(${id})` },
     ] : []),
     ...(esSA ? [
