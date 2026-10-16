@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.4</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.5</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -2775,8 +2775,10 @@ function abrirMenuAcc(ev, id) {
       ? { bg:'#E8A000', icon:'📄', title:'Ver certificado',        isLink:true, href: r.certificadoUrl }
       : { bg:'#ccc',    icon:'📄', title:'Sin certificado',        disabled:true },
     { bg:'#8B0000', icon:'📋',   title:'Generar informe PDF',      fn:`generarInformePDF(${id})` },
-    ...(esSA ? [
+    ...(esAdmin(getSess()) ? [
       { bg:'#1565C0', icon:'✏️', title:'Editar todos los datos',   fn:`cargarParaCompletar(${id})` },
+    ] : []),
+    ...(esSA ? [
       { bg:'#E74C3C', icon:'✕',  title:'Eliminar registro',        fn:`eliminar(${id})` },
     ] : []),
   ];
