@@ -244,7 +244,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.7</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.8</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -2755,11 +2755,14 @@ function abrirMenuAcc(ev, id) {
   ev.stopPropagation();
   const r   = getLocal().find(x => String(x.id) === String(id));
   if (!r) return;
-  // Usar rol más reciente: lista de usuarios sincronizada > sesión almacenada
+  // Tomar el perfil de mayor privilegio entre sesión y lista de usuarios sincronizada
   const _sess = getSess();
-  const _userFresh = getUsers().find(u => u.username === _sess?.username) || _sess;
-  const esSA     = esSuperAdmin(_userFresh);
-  const _esAdmin = esAdmin(_userFresh);
+  const _uname = (_sess?.username || '').toLowerCase();
+  const _userDrive = getUsers().find(u => (u.username||'').toLowerCase() === _uname);
+  // Si Drive dice que es admin pero la sesión dice otra cosa, creer a Drive
+  const _perfilEfectivo = _userDrive?.perfil || _sess?.perfil || (_sess?.superadmin ? 'superadministrador' : 'usuario');
+  const esSA     = _perfilEfectivo === 'superadministrador';
+  const _esAdmin = ['administrador','superadministrador'].includes(_perfilEfectivo);
   const nom  = [r.primerNombre, r.primerApellido].filter(Boolean).join(' ') || 'Paciente';
 
   const capturaUrl = r.llamadasLog
