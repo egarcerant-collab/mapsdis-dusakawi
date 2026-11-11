@@ -92,11 +92,18 @@ td{padding:5px 7px;border-bottom:1px solid #eee;vertical-align:middle}
 tr:hover td{background:#fafafa}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:20px}
 .stat{background:#fff;border-radius:10px;padding:17px;
-  box-shadow:0 2px 9px rgba(0,0,0,.07);border-left:4px solid var(--pri)}
+  box-shadow:0 2px 9px rgba(0,0,0,.07);border-left:4px solid var(--pri);position:relative;cursor:default}
 .stat.g{border-left-color:var(--pri-light)}.stat.b{border-left-color:var(--blue)}
 .stat.y{border-left-color:var(--yellow)}
 .stat-n{font-size:2.1rem;font-weight:800;color:var(--dark)}
 .stat-l{font-size:0.75rem;color:#777;margin-top:3px}
+.stat-pct{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:rgba(30,30,30,0.92);color:#fff;font-size:0.78rem;font-weight:700;
+  padding:5px 11px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:200;
+  box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.stat-pct::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:rgba(30,30,30,0.92)}
+.stat:hover .stat-pct{display:block}
 .bdg{display:inline-block;padding:2px 7px;border-radius:11px;font-size:0.71rem;font-weight:700}
 .bdg-r{background:#D5F5E3;color:var(--pri-dark)}.bdg-g{background:#D5F5E3;color:var(--pri)}
 .bdg-b{background:#D6EAF8;color:var(--blue)}.bdg-y{background:#FEF9E7;color:#B07800}
@@ -244,7 +251,7 @@ tr:hover td{background:#fafafa}
       <p>Asociación de Cabildos Indígenas del Cesar y La Guajira — Registro de Discapacidad</p>
     </div>
     <div class="hdr-r">
-      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.9</span>
+      <span style="font-size:0.62rem;opacity:.6;letter-spacing:.3px">v1.3.16</span>
       <span id="syncBadge" class="sync-badge"></span>
       <span id="hdrUser" class="hdr-user"></span>
     </div>
@@ -267,12 +274,12 @@ tr:hover td{background:#fafafa}
   <!-- DASHBOARD -->
   <div id="vDash" class="main">
     <div class="stats6">
-      <div class="stat"><div class="stat-n" id="sTotal">0</div><div class="stat-l">Total Registros</div></div>
-      <div class="stat g"><div class="stat-n" id="sHoy">0</div><div class="stat-l">Registros Hoy</div></div>
-      <div class="stat b"><div class="stat-n" id="sMes">0</div><div class="stat-l">Este Mes</div></div>
-      <div class="stat y"><div class="stat-n" id="sRehab">0</div><div class="stat-l">En Rehabilitación</div></div>
-      <div class="stat" style="border-left-color:#8E44AD"><div class="stat-n" id="sCert">0</div><div class="stat-l">Con Certificado</div></div>
-      <div class="stat" style="border-left-color:#E74C3C"><div class="stat-n" id="sVict">0</div><div class="stat-l">Víctimas Conflicto</div></div>
+      <div class="stat"><div class="stat-pct" id="pTotal">100%</div><div class="stat-n" id="sTotal">0</div><div class="stat-l">Total Registros</div></div>
+      <div class="stat g"><div class="stat-pct" id="pHoy">—</div><div class="stat-n" id="sHoy">0</div><div class="stat-l">Registros Hoy</div></div>
+      <div class="stat b"><div class="stat-pct" id="pMes">—</div><div class="stat-n" id="sMes">0</div><div class="stat-l">Este Mes</div></div>
+      <div class="stat y"><div class="stat-pct" id="pRehab">—</div><div class="stat-n" id="sRehab">0</div><div class="stat-l">En Rehabilitación</div></div>
+      <div class="stat" style="border-left-color:#8E44AD"><div class="stat-pct" id="pCert">—</div><div class="stat-n" id="sCert">0</div><div class="stat-l">Con Certificado</div></div>
+      <div class="stat" style="border-left-color:#E74C3C"><div class="stat-pct" id="pVict">—</div><div class="stat-n" id="sVict">0</div><div class="stat-l">Víctimas Conflicto</div></div>
     </div>
 
     <div class="charts-grid">
@@ -1577,15 +1584,26 @@ async function sincronizar() {
       }
     }
 
-    // Refrescar perfil del usuario actual desde Drive (detecta cambios de rol)
+    // Refrescar perfil del usuario actual desde Drive + subir usuarios locales faltantes
     try {
       const supaUsers = await api.loadUsers();
-      setUsers(supaUsers);
+      // Subir usuarios locales que Drive no tiene (evita pérdida si solo están en localStorage)
+      const localUsers = getUsers();
+      const driveIds = new Set(supaUsers.map(u => String(u.id)));
+      const driveNames = new Set(supaUsers.map(u => (u.username||'').toLowerCase()));
+      const faltanEnDrive = localUsers.filter(u =>
+        u.username && !driveIds.has(String(u.id)) && !driveNames.has((u.username||'').toLowerCase())
+      );
+      for (const u of faltanEnDrive) {
+        try { await api.saveUser(u); } catch(_) {}
+      }
+      // Si subimos usuarios, recargar la lista actualizada de Drive
+      const driveUsersFinal = faltanEnDrive.length > 0 ? await api.loadUsers() : supaUsers;
+      setUsers(driveUsersFinal);
       const sess = getSess();
       if (sess) {
-        // Buscar por ID primero, luego por username como fallback
-        const userActual = supaUsers.find(x => String(x.id) === String(sess.id))
-                        || supaUsers.find(x => x.username === sess.username);
+        const userActual = driveUsersFinal.find(x => String(x.id) === String(sess.id))
+                        || driveUsersFinal.find(x => x.username === sess.username);
         if (userActual) {
           const perfilViejo = sess.perfil || (sess.superadmin ? 'superadministrador' : 'usuario');
           const perfilNuevo = userActual.perfil || (userActual.superadmin ? 'superadministrador' : 'usuario');
@@ -1615,55 +1633,42 @@ async function doLogin() {
   if (!u || !p) return alerta('alLogin', 'Complete todos los campos.', 'err');
   const _match = (stored, plain) => stored === btoa(plain) || stored === plain;
 
-  // egarcerant: contraseña siempre fijada desde código, no depende de Drive
-  if (u === 'egarcerant') {
-    if (btoa(p) !== btoa('Wanoseshas2015.')) {
-      alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
-      return;
-    }
-    const SU = {id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
-      username:'egarcerant',password:btoa('Wanoseshas2015.'),superadmin:true,
-      createdAt:'2024-01-01T00:00:00.000Z'};
-    setSess(SU);
-    if (navigator.onLine && api._url()) {
-      api._get({ action: 'loginAlert', dev: navigator.userAgent.substring(0,80) }).catch(()=>{});
-    }
-    iniciarApp(SU);
-    return;
-  }
-
   let user = null;
 
-  // Con conexión: Drive SIEMPRE primero (garantiza permisos actualizados)
   if (navigator.onLine) {
     alerta('alLogin', '⏳ Verificando credenciales...', 'inf');
     try {
       const supaUsers = await api.loadUsers();
-      if (supaUsers.length > 0) {
-        user = supaUsers.find(x => x.username === u && _match(x.password, p));
-        if (!user) {
+      user = supaUsers.find(x => x.username === u && _match(x.password, p));
+      if (!user) {
+        // Fallback de emergencia solo para egarcerant sin internet o no en Drive
+        if (u === 'egarcerant' && btoa(p) === btoa('123456')) {
+          user = {id:0,name:'Edgar Garcerant',cargo:'Super Administrador',
+            username:'egarcerant',password:btoa('123456'),superadmin:true,
+            perfil:'superadministrador',createdAt:'2024-01-01T00:00:00.000Z'};
+          // Guardar en Drive si no estaba
+          api.saveUser(user).catch(()=>{});
+        } else {
           alerta('alLogin', '❌ Usuario o contraseña incorrectos.', 'err');
           return;
         }
-        // Migrar contraseña a Base64 si estaba en texto plano
-        if (user.password !== btoa(p)) {
-          user = { ...user, password: btoa(p) };
-          api.saveUser(user).catch(() => {});
-        }
-        // Actualizar caché local con datos frescos (rol, cargo, etc.)
-        const localU = getUsers();
-        const idx = localU.findIndex(x => String(x.id) === String(user.id));
-        if (idx >= 0) localU[idx] = user; else localU.push(user);
-        setUsers(localU);
       }
+      // Migrar contraseña a Base64 si estaba en texto plano
+      if (user.password !== btoa(p)) {
+        user = { ...user, password: btoa(p) };
+        api.saveUser(user).catch(() => {});
+      }
+      // Actualizar caché local
+      const localU = getUsers();
+      const idx = localU.findIndex(x => String(x.id) === String(user.id));
+      if (idx >= 0) localU[idx] = user; else localU.push(user);
+      setUsers(localU);
     } catch (err) {
-      alerta('alLogin', '⚠ No se pudo conectar con el servidor. ' + (err.message||'') + ' Intente de nuevo.', 'err');
+      alerta('alLogin', '⚠ No se pudo conectar con Drive. ' + (err.message||'') + ' Intente de nuevo.', 'err');
       return;
     }
-  }
-
-  // Sin conexión: usar caché local
-  if (!user) {
+  } else {
+    // Sin conexión: caché local
     user = getUsers().find(x => x.username === u && _match(x.password, p));
   }
 
@@ -2364,7 +2369,7 @@ function filtrar() {
   const q    = document.getElementById('fBuscar').value.toLowerCase();
   const func = normFun(document.getElementById('fFuncionario')?.value || '');
   const all  = getLocal();
-  renderRecs(all.filter(r => {
+  const filtrados = all.filter(r => {
     const nom = [r.primerNombre,r.segundoNombre,r.primerApellido,r.segundoApellido].filter(Boolean).join(' ').toLowerCase();
     const okQ = !q || nom.includes(q)||(r.identificacion||'').includes(q)||
                 (r.municipio||'').toLowerCase().includes(q)||
@@ -2372,7 +2377,15 @@ function filtrar() {
     const okF = !func || normFun(r.registradoPor) === func;
     const okC = !_soloCompletos || esCompleto(r);
     return okQ && okF && okC;
-  }));
+  });
+  // Siempre primero los que están al 100%
+  filtrados.sort((a, b) => {
+    const pa = progreso(a).pct, pb = progreso(b).pct;
+    if (pa === 100 && pb !== 100) return -1;
+    if (pb === 100 && pa !== 100) return  1;
+    return pb - pa;
+  });
+  renderRecs(filtrados);
 }
 
 function poblarFiltroFuncionario() {
@@ -2777,7 +2790,7 @@ function abrirMenuAcc(ev, id) {
     { bg:'#27AE60', icon:'🪪',   title:'Ver carnet',               fn:`verCarnet(${id})` },
     { bg:'#075E54', icon:'📞',   title:'Llamadas y controles',     fn:`abrirModalLlamada(${id})` },
     tieneCaptura
-      ? { bg:'#00897B', icon:'📸', title:'Ver captura de seguimiento', isLink:true, href: capturaUrl }
+      ? { bg:'#00897B', icon:'📸', title:'Ver captura de seguimiento', fn:`verCapturaModal(${id})` }
       : { bg:'#ccc',    icon:'📸', title:'Sin captura',            disabled:true },
     tieneCert
       ? { bg:'#E8A000', icon:'📄', title:'Ver certificado',        isLink:true, href: r.certificadoUrl }
@@ -3117,6 +3130,46 @@ async function subirCapturaCtrl(id, n) {
   }
 }
 
+async function verCapturaModal(id) {
+  const r = getLocal().find(x => String(x.id) === String(id));
+  if (!r) return;
+  const logEntry = r.llamadasLog?.filter(c => c.capturaUrl).slice(-1)[0];
+  const capRef   = logEntry?.capturaUrl || r.capturaLlamadaUrl;
+  const n        = logEntry ? (logEntry.n || 1) : 1;
+  if (!capRef) { alert('Sin captura disponible'); return; }
+
+  let dataUrl = null;
+  try { dataUrl = localStorage.getItem('capCache_' + id + '_' + n); } catch(_) {}
+
+  if (!dataUrl) {
+    const overlay = document.createElement('div');
+    overlay.id = '_capModalLoad';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px';
+    overlay.innerHTML = '<span style="color:#fff;font-size:1rem">⏳ Cargando captura desde Drive...</span>';
+    document.body.appendChild(overlay);
+    try {
+      const parts = String(capRef).split(':');
+      const capN  = parts.length === 3 ? parseInt(parts[2]) : n;
+      dataUrl = await api.loadCaptura(id, capN);
+      try { if (dataUrl) localStorage.setItem('capCache_' + id + '_' + capN, dataUrl); } catch(_) {}
+    } catch(e) {
+      overlay.innerHTML = `<span style="color:#f88">❌ Error al cargar: ${e.message||e}</span>
+        <button onclick="document.getElementById('_capModalLoad').remove()" style="color:#fff;background:#444;border:none;padding:7px 18px;border-radius:6px;cursor:pointer;margin-top:6px">Cerrar</button>`;
+      return;
+    }
+    overlay.remove();
+  }
+
+  if (!dataUrl) { alert('No hay captura guardada en Drive para este registro.'); return; }
+
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:16px';
+  m.innerHTML = `<img src="${dataUrl}" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6)">
+    <button onclick="this.parentElement.remove()" style="color:#fff;background:#333;border:none;padding:8px 22px;border-radius:6px;cursor:pointer;font-size:0.95rem">✕ Cerrar</button>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
 async function cargarCapturaImg(id, n, capRef) {
   const imgEl  = document.getElementById('capImg_' + id + '_' + n);
   const loadEl = document.getElementById('capLoad_' + id + '_' + n);
@@ -3219,8 +3272,9 @@ async function asignarFuncionarioVacios() {
   if (!nombre) { al.innerHTML = '<span style="color:#E74C3C">❌ Escribe el nombre del funcionario.</span>'; return; }
   al.innerHTML = '<span style="color:#555">⏳ Procesando...</span>';
   const local = getLocal();
-  const vacios = local.filter(r => !r.registradoPor || r.registradoPor.trim() === '');
-  if (!vacios.length) { al.innerHTML = '<span style="color:#27AE60">✅ No hay registros sin funcionario.</span>'; return; }
+  const _sinAsig = v => !v || ['','sin asignar','heidy','egarcerant'].includes((v||'').trim().toLowerCase());
+  const vacios = local.filter(r => _sinAsig(r.registradoPor));
+  if (!vacios.length) { al.innerHTML = '<span style="color:#27AE60">✅ No hay registros sin funcionario asignado.</span>'; return; }
   vacios.forEach(r => { r.registradoPor = nombre; });
   setLocal(local);
   al.innerHTML = `<span style="color:#555">⏳ Guardando ${vacios.length} registros en Drive...</span>`;
@@ -3263,11 +3317,17 @@ function exportarJSON() {
     totalRegistros:recs.length,registros:recs},null,2),
     `dusakawi_discapacidad_${hoy()}.json`,'application/json');
 }
+const _ESTADOS_VALIDOS = ['Completo','Incompleto'];
+function _limpiarCampo(campo, valor) {
+  if (campo === 'estadoTratamiento') return _ESTADOS_VALIDOS.includes(valor) ? valor : '';
+  return (valor || '').toString().replace(/\n/g,' ');
+}
+
 function exportarCSV() {
   const recs=getLocal(); if(!recs.length) return alert('No hay registros.');
   const campos=Object.keys(LABELS);
   const header=campos.map(c=>LABELS[c]).join(';');
-  const rows=recs.map(r=>campos.map(c=>'"'+(r[c]||'').toString().replace(/"/g,"'").replace(/\n/g,' ')+'"').join(';'));
+  const rows=recs.map(r=>campos.map(c=>'"'+_limpiarCampo(c,r[c]).replace(/"/g,"'")+'"').join(';'));
   descargar('﻿'+[header,...rows].join('\n'),`dusakawi_discapacidad_${hoy()}.csv`,'text/csv;charset=utf-8');
 }
 
@@ -3276,7 +3336,7 @@ function exportarXLSX() {
   if(typeof XLSX === 'undefined') return alert('Librería Excel no cargada. Verifique conexión a internet.');
   const campos=Object.keys(LABELS);
   const encabezado=campos.map(c=>LABELS[c]);
-  const filas=recs.map(r=>campos.map(c=>(r[c]||'').toString().replace(/\n/g,' ')));
+  const filas=recs.map(r=>campos.map(c=>_limpiarCampo(c,r[c])));
   const datos=[encabezado,...filas];
   const ws=XLSX.utils.aoa_to_sheet(datos);
   // Ancho de columnas
@@ -3550,12 +3610,27 @@ function actualizarDash() {
   const recs = getLocal(), h = hoy(), m = h.substring(0, 7);
 
   // ── Estadísticas ─────────────────────────────────────────────
-  document.getElementById('sTotal').textContent = recs.length;
-  document.getElementById('sHoy').textContent   = recs.filter(r => (r.fechaRegistro || r.timestampRegistro || '').startsWith(h)).length;
-  document.getElementById('sMes').textContent   = recs.filter(r => (r.fechaRegistro || r.timestampRegistro || '').startsWith(m)).length;
-  document.getElementById('sRehab').textContent = recs.filter(r => r.asistiendoRehab === 'SI').length;
-  document.getElementById('sCert').textContent  = recs.filter(r => r.certificadoDisc === 'Sí').length;
-  document.getElementById('sVict').textContent  = recs.filter(r => (r.victimaConflicto || '').toUpperCase().startsWith('S')).length;
+  const nHoy   = recs.filter(r => (r.fechaRegistro || r.timestampRegistro || '').startsWith(h)).length;
+  const nMes   = recs.filter(r => (r.fechaRegistro || r.timestampRegistro || '').startsWith(m)).length;
+  const nRehab = recs.filter(r => r.asistiendoRehab === 'SI').length;
+  const nCert  = recs.filter(r => r.certificadoDisc === 'Sí').length;
+  const nVict  = recs.filter(r => (r.victimaConflicto || '').toUpperCase().startsWith('S')).length;
+  const total  = recs.length;
+  const pct = (n) => total > 0 ? (n / total * 100).toFixed(1) + '% del total' : '—';
+
+  document.getElementById('sTotal').textContent = total;
+  document.getElementById('sHoy').textContent   = nHoy;
+  document.getElementById('sMes').textContent   = nMes;
+  document.getElementById('sRehab').textContent = nRehab;
+  document.getElementById('sCert').textContent  = nCert;
+  document.getElementById('sVict').textContent  = nVict;
+
+  document.getElementById('pTotal').textContent = '100% del total';
+  document.getElementById('pHoy').textContent   = pct(nHoy);
+  document.getElementById('pMes').textContent   = pct(nMes);
+  document.getElementById('pRehab').textContent = pct(nRehab);
+  document.getElementById('pCert').textContent  = pct(nCert);
+  document.getElementById('pVict').textContent  = pct(nVict);
 
   // ── Gráfica: Tipo de Discapacidad ─────────────────────────────
   renderBarChart('chartDisc', contarPor(recs, 'tipoDiscapacidad'),
@@ -3585,7 +3660,7 @@ function actualizarDash() {
     // Normalizar nombres (Heidy + Heidy2026 → Heidy)
     const mapaFunc = {};
     recs.forEach(r => {
-      const raw   = (r.registradoPor||'Sin asignar').trim();
+      const raw   = (r.registradoPor||'').trim();
       const canon = raw.replace(/\s*\d{4,}$/, '').trim() || 'Sin asignar';
       mapaFunc[canon] = (mapaFunc[canon] || 0) + 1;
     });
@@ -3599,7 +3674,7 @@ function actualizarDash() {
           const pctTotal = recs.length ? ((cnt/recs.length)*100).toFixed(1) : 0;
           // Completos de este funcionario
           const recsF = recs.filter(r=>{
-            const n=(r.registradoPor||'Sin asignar').trim().replace(/\s*\d{4,}$/,'').trim()||'Sin asignar';
+            const n=(r.registradoPor||'').trim().replace(/\s*\d{4,}$/,'').trim()||'Sin asignar';
             return n===nombre;
           });
           const completosF = recsF.filter(r=>esCompleto(r)).length;
